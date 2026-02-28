@@ -281,7 +281,7 @@ body {
   flex: 1;
   overflow: auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: var(--space-lg);
   position: relative;
@@ -297,11 +297,10 @@ body {
 }
 
 #preview-frame {
-  width: 100%;
-  height: 100%;
   border: none;
   background: transparent;
   border-radius: var(--radius-md);
+  flex-shrink: 0;
 }
 
 /* --- Empty State --- */

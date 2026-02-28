@@ -29,7 +29,7 @@ export async function testConnection(apiKey, baseUrl) {
     try {
         const ai = getAI(apiKey, baseUrl);
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: 'Hi, respond with just "OK".',
             config: { maxOutputTokens: 10 },
         });
@@ -69,13 +69,22 @@ export async function fetchModels(apiKey, baseUrl) {
             const name = model.name || '';
             const displayName = model.displayName || name;
 
-            // Filter: only gemini models, skip embedding/AQA/other special models
+            // Filter: only gemini text generation models
+            // Exclude non-text models (embedding, image gen, video, TTS, robotics, etc.)
             if (
                 name.includes('gemini') &&
                 !name.includes('embedding') &&
                 !name.includes('aqa') &&
                 !name.includes('imagen') &&
-                !name.includes('bisheng')
+                !name.includes('bisheng') &&
+                !name.includes('veo') &&
+                !name.includes('tts') &&
+                !name.includes('image-generation') &&
+                !name.includes('image-preview') &&
+                !name.includes('robotics') &&
+                !name.includes('nano-banana') &&
+                !name.includes('deep-research') &&
+                !name.includes('computer-use')
             ) {
                 // model.name comes as "models/gemini-2.0-flash" — extract just the ID
                 const modelId = name.replace('models/', '');
@@ -89,9 +98,15 @@ export async function fetchModels(apiKey, baseUrl) {
         // Sort: prioritize flash models, then by version (newest first)
         models.sort((a, b) => {
             // Extract version numbers for sorting
+            // Supports both "gemini-2.5-xxx" and "gemini-3-xxx" formats
             const getVersion = (id) => {
-                const match = id.match(/(\d+)\.(\d+)/);
-                return match ? parseFloat(`${match[1]}.${match[2]}`) : 0;
+                // Try "X.Y" format first (e.g., gemini-2.5-flash)
+                const dotMatch = id.match(/gemini-(\d+)\.(\d+)/);
+                if (dotMatch) return parseFloat(`${dotMatch[1]}.${dotMatch[2]}`);
+                // Try "X-" format (e.g., gemini-3-flash-preview)
+                const intMatch = id.match(/gemini-(\d+)-/);
+                if (intMatch) return parseFloat(intMatch[1]);
+                return 0;
             };
             const vA = getVersion(a.id);
             const vB = getVersion(b.id);
@@ -119,20 +134,34 @@ export async function fetchModels(apiKey, baseUrl) {
 
 /**
  * 从 AI 返回的文本中提取纯 HTML 代码
- * 去除 markdown 代码块标记等
+ * 处理多种格式：
+ * 1. 分析文字 + ```html ... ``` 代码块
+ * 2. 整段就是 ```html ... ``` 代码块
+ * 3. 直接输出的 HTML（以 <!DOCTYPE 或 <html 或 <link 开头）
  */
 function extractHTML(text) {
-    // Remove ```html ... ``` wrapper if present
-    let html = text.trim();
+    let raw = text.trim();
 
-    // Match ```html or ``` at start and ``` at end
-    const codeBlockRegex = /^```(?:html)?\s*\n?([\s\S]*?)\n?\s*```$/;
-    const match = html.match(codeBlockRegex);
-    if (match) {
-        html = match[1].trim();
+    // 1. Try to find a ```html ... ``` or ``` ... ``` code block WITHIN the text
+    const codeBlockInText = /```(?:html)?\s*\n([\s\S]*?)\n\s*```/;
+    const blockMatch = raw.match(codeBlockInText);
+    if (blockMatch) {
+        return blockMatch[1].trim();
     }
 
-    return html;
+    // 2. If the text starts with common HTML markers, return as-is
+    if (/^<(!DOCTYPE|html|link|head|style|div)/i.test(raw)) {
+        return raw;
+    }
+
+    // 3. Try to find HTML content starting from the first '<' that looks like HTML
+    const htmlStart = raw.search(/<(!DOCTYPE|html|link|head|style|div)/i);
+    if (htmlStart > 0) {
+        return raw.slice(htmlStart).trim();
+    }
+
+    // 4. Fallback: return the whole text
+    return raw;
 }
 
 /**

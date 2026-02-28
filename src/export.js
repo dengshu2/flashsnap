@@ -6,17 +6,27 @@
 import { toPng } from 'html-to-image';
 
 /**
- * 将 iframe 中的内容转换为 PNG Blob
- * @param {HTMLIFrameElement} iframe
- * @returns {Promise<Blob>}
+ * 获取 iframe 中的卡片根元素
+ * 优先查找 .card 类元素，否则取 body 的第一个子元素
  */
-export async function captureToBlob(iframe) {
+function getCardElement(iframe) {
     const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-    const cardRoot = iframeDoc.body;
-
-    if (!cardRoot) {
+    if (!iframeDoc?.body) {
         throw new Error('无法获取卡片内容');
     }
+    // Target the actual card element for accurate capture
+    return iframeDoc.body.querySelector('.card')
+        || iframeDoc.body.firstElementChild
+        || iframeDoc.body;
+}
+
+/**
+ * 将 iframe 中的卡片内容转换为 data URL
+ * @param {HTMLIFrameElement} iframe
+ * @returns {Promise<string>} PNG data URL
+ */
+async function captureToDataUrl(iframe) {
+    const cardEl = getCardElement(iframe);
 
     // Wait for fonts to load in iframe
     try {
@@ -28,13 +38,15 @@ export async function captureToBlob(iframe) {
     // Wait a bit more for fonts to render
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    const dataUrl = await toPng(cardRoot, {
+    const dataUrl = await toPng(cardEl, {
         quality: 1.0,
         pixelRatio: 2, // 2x for retina quality
         backgroundColor: '#ffffff',
+        width: cardEl.scrollWidth,
+        height: cardEl.scrollHeight,
         style: {
             margin: '0',
-            padding: '0',
+            transform: 'none',
         },
         // Filter out unwanted elements
         filter: (node) => {
@@ -42,7 +54,16 @@ export async function captureToBlob(iframe) {
         },
     });
 
-    // Convert data URL to Blob
+    return dataUrl;
+}
+
+/**
+ * 将 iframe 中的内容转换为 PNG Blob
+ * @param {HTMLIFrameElement} iframe
+ * @returns {Promise<Blob>}
+ */
+export async function captureToBlob(iframe) {
+    const dataUrl = await captureToDataUrl(iframe);
     const response = await fetch(dataUrl);
     return response.blob();
 }
@@ -76,22 +97,32 @@ export async function copyToClipboard(iframe) {
 }
 
 /**
+ * 生成可读的文件名
+ * 格式: FlashSnap_20260228_173352.png
+ */
+function generateFilename() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `FlashSnap_${date}_${time}.png`;
+}
+
+/**
  * 下载为 PNG 图片
+ * 使用 data URL 直接下载，避免 blob URL 文件名丢失问题
  * @param {HTMLIFrameElement} iframe
  * @param {string} [filename]
  * @returns {Promise<void>}
  */
 export async function downloadAsPNG(iframe, filename) {
-    const blob = await captureToBlob(iframe);
+    const dataUrl = await captureToDataUrl(iframe);
 
-    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || `flashsnap-${Date.now()}.png`;
+    link.href = dataUrl;
+    link.download = filename || generateFilename();
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
-    // Clean up
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+

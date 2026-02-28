@@ -145,30 +145,51 @@ function setGenerating(isGenerating) {
  */
 function renderToIframe(html) {
   const iframe = els.previewFrame;
+  const container = els.previewContainer;
+
+  // Reset transform before measuring
+  iframe.style.transform = 'none';
+  iframe.style.transformOrigin = 'top left';
+  iframe.style.width = '900px';
+  iframe.style.maxWidth = 'none';
+  iframe.style.height = 'auto';
+
   const doc = iframe.contentDocument || iframe.contentWindow.document;
 
   doc.open();
   doc.write(html);
   doc.close();
 
-  // Auto-resize iframe to fit content
+  // Auto-resize iframe to fit content, then scale to fit container
   const resizeIframe = () => {
     try {
       const body = doc.body;
-      const html = doc.documentElement;
-      if (body && html) {
+      const htmlEl = doc.documentElement;
+      if (body && htmlEl) {
+        // Read the card's natural dimensions at full width
+        const cardEl = body.querySelector('.card') || body.firstElementChild;
+        const cardWidth = cardEl ? Math.max(cardEl.scrollWidth, cardEl.offsetWidth, 900) : 900;
+
+        // Set iframe to card's natural size
+        iframe.style.width = cardWidth + 'px';
+
         const height = Math.max(
           body.scrollHeight, body.offsetHeight,
-          html.clientHeight, html.scrollHeight, html.offsetHeight
+          htmlEl.clientHeight, htmlEl.scrollHeight, htmlEl.offsetHeight
         );
         iframe.style.height = height + 'px';
 
-        // Center the card by setting max-width
-        const cardEl = body.querySelector('.card') || body.firstElementChild;
-        if (cardEl) {
-          const cardWidth = cardEl.offsetWidth || 900;
-          iframe.style.width = cardWidth + 'px';
-          iframe.style.maxWidth = '100%';
+        // Scale down to fit the preview container if needed
+        const containerWidth = container.clientWidth - 48; // subtract padding
+        if (containerWidth > 0 && containerWidth < cardWidth) {
+          const scale = containerWidth / cardWidth;
+          iframe.style.transform = `scale(${scale})`;
+          iframe.style.transformOrigin = 'top center';
+          // Adjust the container's visual space for the scaled iframe
+          iframe.style.marginBottom = `-${height * (1 - scale)}px`;
+        } else {
+          iframe.style.transform = 'none';
+          iframe.style.marginBottom = '0';
         }
       }
     } catch (e) {
@@ -178,9 +199,9 @@ function renderToIframe(html) {
 
   // Wait for content + fonts, then resize
   iframe.onload = resizeIframe;
-  setTimeout(resizeIframe, 200);
+  setTimeout(resizeIframe, 300);
   setTimeout(resizeIframe, 1000);
-  setTimeout(resizeIframe, 2000);
+  setTimeout(resizeIframe, 2500);
 }
 
 // ============================================
@@ -218,19 +239,6 @@ async function handleGenerate() {
     onChunk(text) {
       chunkCount++;
       els.loadingProgress.textContent = `已接收 ${text.length} 字符...`;
-
-      // Live preview: try to render partial HTML
-      if (chunkCount % 3 === 0) {
-        try {
-          // Only render if it looks like complete enough HTML
-          if (text.includes('</style>') || text.includes('</div>')) {
-            renderToIframe(text);
-            showState('preview');
-          }
-        } catch (e) {
-          // ignore rendering errors during streaming
-        }
-      }
     },
     onComplete(html) {
       state.currentHTML = html;

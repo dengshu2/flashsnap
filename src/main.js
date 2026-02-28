@@ -3,7 +3,7 @@
  */
 
 import { generateCard, testConnection, fetchModels } from './api.js';
-import { copyToClipboard, downloadAsPNG } from './export.js';
+import { copyToClipboard } from './export.js';
 import { CARD_SYSTEM_PROMPT } from './prompts.js';
 
 // ============================================
@@ -28,7 +28,7 @@ const els = {
   btnGenerate: $('#btn-generate'),
   btnClear: $('#btn-clear'),
   btnCopy: $('#btn-copy'),
-  btnDownload: $('#btn-download'),
+
   btnRegenerate: $('#btn-regenerate'),
   btnSettings: $('#btn-settings'),
   btnHistory: $('#btn-history'),
@@ -287,19 +287,7 @@ async function handleCopy() {
   }
 }
 
-async function handleDownload() {
-  if (!state.currentHTML) return;
 
-  try {
-    els.btnDownload.querySelector('span:last-child').textContent = '下载中...';
-    await downloadAsPNG(els.previewFrame);
-    els.btnDownload.querySelector('span:last-child').textContent = '下载';
-    showToast('图片已下载！');
-  } catch (error) {
-    els.btnDownload.querySelector('span:last-child').textContent = '下载';
-    showToast(`下载失败：${error.message}`, 'error');
-  }
-}
 
 function handleRegenerate() {
   if (state.lastInput) {
@@ -616,7 +604,7 @@ function init() {
 
   // Export actions
   els.btnCopy.addEventListener('click', handleCopy);
-  els.btnDownload.addEventListener('click', handleDownload);
+
   els.btnRegenerate.addEventListener('click', handleRegenerate);
 
   // Settings

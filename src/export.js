@@ -1,9 +1,109 @@
 /**
  * FlashSnap — 导出模块
  * 处理 HTML → 图片转换、剪贴板写入、下载
+ *
+ * 核心思路：导出前将 Google Fonts 转成 base64 内联，
+ * 避免 html-to-image 克隆 DOM 时丢失外部字体。
  */
 
 import { toPng } from 'html-to-image';
+
+/* ------------------------------------------------
+ * 字体内联缓存 — 同一组字体只需抓取一次
+ * ------------------------------------------------ */
+const fontCache = new Map(); // href → embeddedCSS
+
+/**
+ * 将 Blob 转为 base64 data URL
+ */
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+/**
+ * 获取 iframe 中所有 Google Fonts <link> 的 CSS，
+ * 并将其中引用的字体文件转为 base64 内联。
+ *
+ * @param {HTMLIFrameElement} iframe
+ * @returns {Promise<string>} 包含 @font-face 的内联 CSS
+ */
+async function getEmbeddedFontCSS(iframe) {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return '';
+
+    const links = doc.querySelectorAll(
+        'link[rel="stylesheet"][href*="fonts.googleapis.com"], link[rel="stylesheet"][href*="fonts.gstatic.com"]'
+    );
+    if (links.length === 0) return '';
+
+    let fontCSS = '';
+
+    for (const link of links) {
+        const href = link.getAttribute('href');
+        if (!href) continue;
+
+        // 命中缓存
+        if (fontCache.has(href)) {
+            fontCSS += fontCache.get(href) + '\n';
+            continue;
+        }
+
+        try {
+            const response = await fetch(href);
+            let css = await response.text();
+
+            // 找到所有 url(...) 引用并替换为 base64
+            const urlPattern = /url\(([^)]+)\)/g;
+            const matches = [...css.matchAll(urlPattern)];
+
+            for (const match of matches) {
+                const rawUrl = match[1].replace(/['"]/g, '').trim();
+                if (rawUrl.startsWith('data:')) continue;
+
+                try {
+                    const fontRes = await fetch(rawUrl);
+                    const blob = await fontRes.blob();
+                    const dataUrl = await blobToBase64(blob);
+                    // 全局替换相同 URL
+                    css = css.split(match[1]).join(`'${dataUrl}'`);
+                } catch (e) {
+                    console.warn('[FlashSnap] 字体文件嵌入失败:', rawUrl, e);
+                }
+            }
+
+            fontCache.set(href, css);
+            fontCSS += css + '\n';
+        } catch (e) {
+            console.warn('[FlashSnap] 获取字体 CSS 失败:', href, e);
+        }
+    }
+
+    return fontCSS;
+}
+
+/**
+ * 收集 iframe 中 <style> 标签内的所有 CSS 规则，
+ * 确保 html-to-image 克隆节点时不丢失样式。
+ *
+ * @param {HTMLIFrameElement} iframe
+ * @returns {string}
+ */
+function collectInlineStyles(iframe) {
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return '';
+
+    let css = '';
+    const styleTags = doc.querySelectorAll('style');
+    for (const tag of styleTags) {
+        css += tag.textContent + '\n';
+    }
+    return css;
+}
 
 /**
  * 获取 iframe 中的卡片根元素
@@ -14,7 +114,6 @@ function getCardElement(iframe) {
     if (!iframeDoc?.body) {
         throw new Error('无法获取卡片内容');
     }
-    // Target the actual card element for accurate capture
     return iframeDoc.body.querySelector('.card')
         || iframeDoc.body.firstElementChild
         || iframeDoc.body;
@@ -28,27 +127,38 @@ function getCardElement(iframe) {
 async function captureToDataUrl(iframe) {
     const cardEl = getCardElement(iframe);
 
-    // Wait for fonts to load in iframe
+    // 1. 等待 iframe 中字体加载完成
     try {
         await iframe.contentWindow.document.fonts.ready;
     } catch (e) {
-        // fonts API might not be available, continue
+        // fonts API 不可用，继续
     }
 
-    // Wait a bit more for fonts to render
+    // 等待字体渲染
     await new Promise(resolve => setTimeout(resolve, 500));
 
+    // 2. 预先嵌入字体（核心修复）
+    const fontCSS = await getEmbeddedFontCSS(iframe);
+
+    // 3. 收集 iframe 中的内联样式（包含卡片布局 CSS）
+    const inlineCSS = collectInlineStyles(iframe);
+
+    // 合并：内联样式 + 嵌入字体
+    const combinedCSS = inlineCSS + '\n' + fontCSS;
+
+    // 4. 生成图片
     const dataUrl = await toPng(cardEl, {
         quality: 1.0,
-        pixelRatio: 2, // 2x for retina quality
-        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        backgroundColor: null, // 不强制白色背景，使用卡片自身的背景
         width: cardEl.scrollWidth,
         height: cardEl.scrollHeight,
+        // 将预嵌入的字体 CSS 与样式传递给 html-to-image
+        fontEmbedCSS: combinedCSS,
         style: {
             margin: '0',
             transform: 'none',
         },
-        // Filter out unwanted elements
         filter: (node) => {
             return node.tagName !== 'SCRIPT';
         },
@@ -87,7 +197,6 @@ export async function copyToClipboard(iframe) {
     } catch (error) {
         console.error('Copy to clipboard failed:', error);
 
-        // Fallback: try to copy as data URL
         if (error.name === 'NotAllowedError') {
             throw new Error('剪贴板权限被拒绝。请确保在 HTTPS 或 localhost 环境下使用。');
         }
@@ -96,33 +205,4 @@ export async function copyToClipboard(iframe) {
     }
 }
 
-/**
- * 生成可读的文件名
- * 格式: FlashSnap_20260228_173352.png
- */
-function generateFilename() {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
-    const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    return `FlashSnap_${date}_${time}.png`;
-}
-
-/**
- * 下载为 PNG 图片
- * 使用 data URL 直接下载，避免 blob URL 文件名丢失问题
- * @param {HTMLIFrameElement} iframe
- * @param {string} [filename]
- * @returns {Promise<void>}
- */
-export async function downloadAsPNG(iframe, filename) {
-    const dataUrl = await captureToDataUrl(iframe);
-
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = filename || generateFilename();
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
 

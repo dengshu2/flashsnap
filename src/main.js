@@ -577,7 +577,21 @@ function renderHistoryList() {
 function handleClearHistory() {
   if (confirm('确定要清空所有历史记录吗？')) {
     clearHistory();
-    renderHistoryList();
+
+    // 重置应用状态
+    state.currentHTML = null;
+    state.lastInput = '';
+
+    // 清空输入框
+    els.inputText.value = '';
+    els.charCount.textContent = '0 字';
+
+    // 回到空状态
+    showState('empty');
+
+    // 关闭弹窗
+    hideHistoryModal();
+
     showToast('历史记录已清空');
   }
 }

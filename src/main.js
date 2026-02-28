@@ -1,0 +1,490 @@
+/**
+ * FlashSnap — 主逻辑
+ */
+
+import { generateCard } from './api.js';
+import { copyToClipboard, downloadAsPNG } from './export.js';
+import { CARD_SYSTEM_PROMPT } from './prompts.js';
+
+// ============================================
+// State
+// ============================================
+const state = {
+  isGenerating: false,
+  currentHTML: null,
+  lastInput: '',
+};
+
+// ============================================
+// DOM Elements
+// ============================================
+const $ = (sel) => document.querySelector(sel);
+
+const els = {
+  inputText: $('#input-text'),
+  charCount: $('#char-count'),
+  btnGenerate: $('#btn-generate'),
+  btnClear: $('#btn-clear'),
+  btnCopy: $('#btn-copy'),
+  btnDownload: $('#btn-download'),
+  btnRegenerate: $('#btn-regenerate'),
+  btnSettings: $('#btn-settings'),
+  btnHistory: $('#btn-history'),
+  previewFrame: $('#preview-frame'),
+  previewActions: $('#preview-actions'),
+  previewContainer: $('#preview-container'),
+  emptyState: $('#empty-state'),
+  loadingState: $('#loading-state'),
+  loadingProgress: $('#loading-progress'),
+
+  // Settings modal
+  settingsModal: $('#settings-modal'),
+  btnCloseSettings: $('#btn-close-settings'),
+  btnSaveSettings: $('#btn-save-settings'),
+  apiKeyInput: $('#api-key-input'),
+  modelSelect: $('#model-select'),
+  baseUrlInput: $('#base-url-input'),
+  btnToggleKey: $('#btn-toggle-key'),
+
+  // History modal
+  historyModal: $('#history-modal'),
+  btnCloseHistory: $('#btn-close-history'),
+  btnClearHistory: $('#btn-clear-history'),
+  historyList: $('#history-list'),
+};
+
+// ============================================
+// Settings / Storage
+// ============================================
+function getSettings() {
+  return {
+    apiKey: localStorage.getItem('flashsnap_api_key') || '',
+    model: localStorage.getItem('flashsnap_model') || 'gemini-2.5-flash',
+    baseUrl: localStorage.getItem('flashsnap_base_url') || '',
+  };
+}
+
+function saveSettings(settings) {
+  if (settings.apiKey) localStorage.setItem('flashsnap_api_key', settings.apiKey);
+  if (settings.model) localStorage.setItem('flashsnap_model', settings.model);
+  if (settings.baseUrl !== undefined) localStorage.setItem('flashsnap_base_url', settings.baseUrl);
+}
+
+function getHistory() {
+  try {
+    return JSON.parse(localStorage.getItem('flashsnap_history') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function addHistory(input, html) {
+  const history = getHistory();
+  history.unshift({
+    id: Date.now(),
+    input: input.slice(0, 100),
+    html,
+    time: new Date().toISOString(),
+  });
+  // Keep only last 20
+  if (history.length > 20) history.length = 20;
+  localStorage.setItem('flashsnap_history', JSON.stringify(history));
+}
+
+function clearHistory() {
+  localStorage.removeItem('flashsnap_history');
+}
+
+// ============================================
+// Toast
+// ============================================
+function showToast(message, type = 'success') {
+  const container = $('#toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'toastOut 300ms ease forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ============================================
+// UI State Management
+// ============================================
+function showState(stateName) {
+  els.emptyState.style.display = stateName === 'empty' ? 'block' : 'none';
+  els.loadingState.style.display = stateName === 'loading' ? 'block' : 'none';
+  els.previewFrame.style.display = stateName === 'preview' ? 'block' : 'none';
+  els.previewActions.style.display = stateName === 'preview' ? 'flex' : 'none';
+}
+
+function setGenerating(isGenerating) {
+  state.isGenerating = isGenerating;
+  els.btnGenerate.disabled = isGenerating;
+
+  if (isGenerating) {
+    els.btnGenerate.querySelector('.btn-text').textContent = '生成中...';
+    els.btnGenerate.querySelector('.btn-icon').textContent = '⏳';
+  } else {
+    els.btnGenerate.querySelector('.btn-text').textContent = '生成卡片';
+    els.btnGenerate.querySelector('.btn-icon').textContent = '✨';
+  }
+}
+
+/**
+ * 将 HTML 内容写入 iframe 并自适应高度
+ */
+function renderToIframe(html) {
+  const iframe = els.previewFrame;
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Auto-resize iframe to fit content
+  const resizeIframe = () => {
+    try {
+      const body = doc.body;
+      const html = doc.documentElement;
+      if (body && html) {
+        const height = Math.max(
+          body.scrollHeight, body.offsetHeight,
+          html.clientHeight, html.scrollHeight, html.offsetHeight
+        );
+        iframe.style.height = height + 'px';
+
+        // Center the card by setting max-width
+        const cardEl = body.querySelector('.card') || body.firstElementChild;
+        if (cardEl) {
+          const cardWidth = cardEl.offsetWidth || 900;
+          iframe.style.width = cardWidth + 'px';
+          iframe.style.maxWidth = '100%';
+        }
+      }
+    } catch (e) {
+      // Cross-origin restrictions, ignore
+    }
+  };
+
+  // Wait for content + fonts, then resize
+  iframe.onload = resizeIframe;
+  setTimeout(resizeIframe, 200);
+  setTimeout(resizeIframe, 1000);
+  setTimeout(resizeIframe, 2000);
+}
+
+// ============================================
+// Core: Generate Card
+// ============================================
+async function handleGenerate() {
+  const input = els.inputText.value.trim();
+
+  if (!input) {
+    showToast('请输入要生成信息卡的内容', 'error');
+    els.inputText.focus();
+    return;
+  }
+
+  const settings = getSettings();
+  if (!settings.apiKey) {
+    showToast('请先在设置中配置 API Key', 'error');
+    showSettingsModal();
+    return;
+  }
+
+  state.lastInput = input;
+  setGenerating(true);
+  showState('loading');
+  els.loadingProgress.textContent = '';
+
+  let chunkCount = 0;
+
+  await generateCard({
+    apiKey: settings.apiKey,
+    model: settings.model,
+    userContent: input,
+    systemPrompt: CARD_SYSTEM_PROMPT,
+    baseUrl: settings.baseUrl || undefined,
+    onChunk(text) {
+      chunkCount++;
+      els.loadingProgress.textContent = `已接收 ${text.length} 字符...`;
+
+      // Live preview: try to render partial HTML
+      if (chunkCount % 3 === 0) {
+        try {
+          // Only render if it looks like complete enough HTML
+          if (text.includes('</style>') || text.includes('</div>')) {
+            renderToIframe(text);
+            showState('preview');
+          }
+        } catch (e) {
+          // ignore rendering errors during streaming
+        }
+      }
+    },
+    onComplete(html) {
+      state.currentHTML = html;
+      renderToIframe(html);
+      showState('preview');
+      setGenerating(false);
+      addHistory(input, html);
+      showToast('信息卡生成完成！');
+    },
+    onError(error) {
+      setGenerating(false);
+      showState('empty');
+
+      let errorMsg = '生成失败：';
+      if (error.message?.includes('API key')) {
+        errorMsg += 'API Key 无效，请检查设置';
+      } else if (error.message?.includes('quota')) {
+        errorMsg += 'API 配额已用完';
+      } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+        errorMsg += '网络连接失败，请检查网络';
+      } else {
+        errorMsg += error.message || '未知错误';
+      }
+
+      showToast(errorMsg, 'error');
+    },
+  });
+}
+
+// ============================================
+// Export Actions
+// ============================================
+async function handleCopy() {
+  if (!state.currentHTML) return;
+
+  try {
+    els.btnCopy.querySelector('span:last-child').textContent = '复制中...';
+    await copyToClipboard(els.previewFrame);
+    els.btnCopy.querySelector('span:last-child').textContent = '复制';
+    showToast('已复制到剪贴板！');
+  } catch (error) {
+    els.btnCopy.querySelector('span:last-child').textContent = '复制';
+    showToast(`复制失败：${error.message}`, 'error');
+  }
+}
+
+async function handleDownload() {
+  if (!state.currentHTML) return;
+
+  try {
+    els.btnDownload.querySelector('span:last-child').textContent = '下载中...';
+    await downloadAsPNG(els.previewFrame);
+    els.btnDownload.querySelector('span:last-child').textContent = '下载';
+    showToast('图片已下载！');
+  } catch (error) {
+    els.btnDownload.querySelector('span:last-child').textContent = '下载';
+    showToast(`下载失败：${error.message}`, 'error');
+  }
+}
+
+function handleRegenerate() {
+  if (state.lastInput) {
+    els.inputText.value = state.lastInput;
+    handleGenerate();
+  }
+}
+
+// ============================================
+// Settings Modal
+// ============================================
+function showSettingsModal() {
+  const settings = getSettings();
+  els.apiKeyInput.value = settings.apiKey;
+  els.modelSelect.value = settings.model;
+  els.baseUrlInput.value = settings.baseUrl;
+  els.settingsModal.style.display = 'flex';
+}
+
+function hideSettingsModal() {
+  els.settingsModal.style.display = 'none';
+}
+
+function handleSaveSettings() {
+  const apiKey = els.apiKeyInput.value.trim();
+  const model = els.modelSelect.value;
+  const baseUrl = els.baseUrlInput.value.trim();
+
+  if (!apiKey) {
+    showToast('请输入 API Key', 'error');
+    return;
+  }
+
+  saveSettings({ apiKey, model, baseUrl });
+  hideSettingsModal();
+  showToast('设置已保存');
+}
+
+function toggleKeyVisibility() {
+  const input = els.apiKeyInput;
+  input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ============================================
+// History Modal
+// ============================================
+function showHistoryModal() {
+  renderHistoryList();
+  els.historyModal.style.display = 'flex';
+}
+
+function hideHistoryModal() {
+  els.historyModal.style.display = 'none';
+}
+
+function renderHistoryList() {
+  const history = getHistory();
+
+  if (history.length === 0) {
+    els.historyList.innerHTML = '<p class="empty-desc">暂无历史记录</p>';
+    return;
+  }
+
+  els.historyList.innerHTML = history.map(item => {
+    const time = new Date(item.time);
+    const timeStr = `${time.getMonth() + 1}/${time.getDate()} ${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+
+    return `
+      <div class="history-item" data-id="${item.id}">
+        <div class="history-item-content">
+          <div class="history-item-text">${escapeHTML(item.input)}</div>
+          <div class="history-item-time">${timeStr}</div>
+        </div>
+        <button class="history-item-delete" data-delete-id="${item.id}" title="删除">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  // Bind events
+  els.historyList.querySelectorAll('.history-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.history-item-delete')) return;
+
+      const id = parseInt(item.dataset.id);
+      const entry = history.find(h => h.id === id);
+      if (entry) {
+        state.currentHTML = entry.html;
+        renderToIframe(entry.html);
+        showState('preview');
+        hideHistoryModal();
+        showToast('已加载历史记录');
+      }
+    });
+  });
+
+  els.historyList.querySelectorAll('.history-item-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.deleteId);
+      const history = getHistory();
+      const filtered = history.filter(h => h.id !== id);
+      localStorage.setItem('flashsnap_history', JSON.stringify(filtered));
+      renderHistoryList();
+      showToast('已删除');
+    });
+  });
+}
+
+function handleClearHistory() {
+  if (confirm('确定要清空所有历史记录吗？')) {
+    clearHistory();
+    renderHistoryList();
+    showToast('历史记录已清空');
+  }
+}
+
+// ============================================
+// Utilities
+// ============================================
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============================================
+// Event Bindings
+// ============================================
+function init() {
+  // Character count
+  els.inputText.addEventListener('input', () => {
+    const len = els.inputText.value.length;
+    els.charCount.textContent = `${len} 字`;
+  });
+
+  // Generate
+  els.btnGenerate.addEventListener('click', handleGenerate);
+
+  // Keyboard shortcut: Ctrl/Cmd + Enter to generate
+  els.inputText.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleGenerate();
+    }
+  });
+
+  // Clear input
+  els.btnClear.addEventListener('click', () => {
+    els.inputText.value = '';
+    els.charCount.textContent = '0 字';
+    els.inputText.focus();
+  });
+
+  // Export actions
+  els.btnCopy.addEventListener('click', handleCopy);
+  els.btnDownload.addEventListener('click', handleDownload);
+  els.btnRegenerate.addEventListener('click', handleRegenerate);
+
+  // Settings
+  els.btnSettings.addEventListener('click', showSettingsModal);
+  els.btnCloseSettings.addEventListener('click', hideSettingsModal);
+  els.btnSaveSettings.addEventListener('click', handleSaveSettings);
+  els.btnToggleKey.addEventListener('click', toggleKeyVisibility);
+
+  // History
+  els.btnHistory.addEventListener('click', showHistoryModal);
+  els.btnCloseHistory.addEventListener('click', hideHistoryModal);
+  els.btnClearHistory.addEventListener('click', handleClearHistory);
+
+  // Close modals on overlay click
+  els.settingsModal.addEventListener('click', (e) => {
+    if (e.target === els.settingsModal) hideSettingsModal();
+  });
+  els.historyModal.addEventListener('click', (e) => {
+    if (e.target === els.historyModal) hideHistoryModal();
+  });
+
+  // Close modals on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      hideSettingsModal();
+      hideHistoryModal();
+    }
+  });
+
+  // Check if API key is configured, show settings if not
+  const settings = getSettings();
+  if (!settings.apiKey) {
+    // Show a gentle reminder after a short delay
+    setTimeout(() => {
+      showToast('欢迎使用 FlashSnap！请先配置 API Key', 'info');
+    }, 500);
+  }
+
+  // Focus input
+  els.inputText.focus();
+}
+
+// Boot
+init();

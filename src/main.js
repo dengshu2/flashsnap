@@ -13,6 +13,8 @@ const state = {
   isGenerating: false,
   currentHTML: null,
   lastInput: '',
+  lastTestResult: null, // null = not tested, true = success, false = failed
+  testedApiKey: null,   // the API key that was tested
 };
 
 // ============================================
@@ -351,6 +353,13 @@ function handleSaveSettings() {
     return;
   }
 
+  // If the current key was tested and failed, warn the user
+  if (state.lastTestResult === false && state.testedApiKey === apiKey) {
+    if (!confirm('API Key 测试失败，确定要保存吗？')) {
+      return;
+    }
+  }
+
   saveSettings({ apiKey, model, baseUrl });
   hideSettingsModal();
   showToast('设置已保存');
@@ -382,6 +391,10 @@ async function handleTestConnection() {
   els.apiTestStatus.className = 'api-test-status status-loading';
 
   const result = await testConnection(apiKey, baseUrl || undefined);
+
+  // Record the test result
+  state.lastTestResult = result.success;
+  state.testedApiKey = apiKey;
 
   // Show result
   btnText.textContent = '测试连接';
@@ -613,6 +626,14 @@ function init() {
   els.btnToggleKey.addEventListener('click', toggleKeyVisibility);
   els.btnTestApi.addEventListener('click', handleTestConnection);
   els.btnRefreshModels.addEventListener('click', () => handleRefreshModels(false));
+
+  // Reset test status when API key changes
+  els.apiKeyInput.addEventListener('input', () => {
+    state.lastTestResult = null;
+    state.testedApiKey = null;
+    els.apiTestStatus.textContent = '';
+    els.apiTestStatus.className = 'api-test-status';
+  });
 
   // History
   els.btnHistory.addEventListener('click', showHistoryModal);

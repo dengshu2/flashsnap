@@ -28,12 +28,14 @@ function getAI(apiKey, baseUrl) {
 export async function testConnection(apiKey, baseUrl) {
     try {
         const ai = getAI(apiKey, baseUrl);
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: 'Hi, respond with just "OK".',
-            config: { maxOutputTokens: 10 },
-        });
-        if (response.text) {
+        // Use models.list() to verify API key — lightweight, no content generation needed
+        const pager = await ai.models.list({ config: { pageSize: 1 } });
+        let hasModel = false;
+        for await (const model of pager) {
+            hasModel = true;
+            break; // We only need to confirm we can list at least one model
+        }
+        if (hasModel) {
             return { success: true, message: 'API 连接正常！' };
         }
         return { success: false, message: '未收到有效响应' };
@@ -138,6 +140,7 @@ export async function fetchModels(apiKey, baseUrl) {
  * 1. 分析文字 + ```html ... ``` 代码块
  * 2. 整段就是 ```html ... ``` 代码块
  * 3. 直接输出的 HTML（以 <!DOCTYPE 或 <html 或 <link 开头）
+ * 4. HTML 前后夹带分析/自检文字
  */
 function extractHTML(text) {
     let raw = text.trim();
@@ -149,18 +152,21 @@ function extractHTML(text) {
         return blockMatch[1].trim();
     }
 
-    // 2. If the text starts with common HTML markers, return as-is
-    if (/^<(!DOCTYPE|html|link|head|style|div)/i.test(raw)) {
-        return raw;
-    }
-
-    // 3. Try to find HTML content starting from the first '<' that looks like HTML
+    // 2. Find the HTML boundaries — strip leading and trailing non-HTML text
     const htmlStart = raw.search(/<(!DOCTYPE|html|link|head|style|div)/i);
-    if (htmlStart > 0) {
-        return raw.slice(htmlStart).trim();
+    if (htmlStart >= 0) {
+        let html = raw.slice(htmlStart);
+
+        // Strip trailing text after the last closing </html> tag
+        const htmlEndMatch = html.match(/([\s\S]*<\/html\s*>)/i);
+        if (htmlEndMatch) {
+            html = htmlEndMatch[1];
+        }
+
+        return html.trim();
     }
 
-    // 4. Fallback: return the whole text
+    // 3. Fallback: return the whole text
     return raw;
 }
 

@@ -566,7 +566,8 @@ body {
 }
 
 .form-group label {
-  display: block;
+  display: flex;
+  align-items: center;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text);
@@ -806,15 +807,6 @@ select {
 
 .btn-inline.spinning svg {
   animation: spin 0.8s linear infinite;
-}
-
-.form-group label {
-  display: flex;
-  align-items: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: var(--space-xs);
 }
 
 select.loading {

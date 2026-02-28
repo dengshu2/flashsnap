@@ -94,7 +94,16 @@ function addHistory(input, html) {
   });
   // Keep only last 20
   if (history.length > 20) history.length = 20;
-  localStorage.setItem('flashsnap_history', JSON.stringify(history));
+  try {
+    localStorage.setItem('flashsnap_history', JSON.stringify(history));
+  } catch (e) {
+    // localStorage quota exceeded — drop oldest entries and retry
+    console.warn('[FlashSnap] localStorage quota exceeded, trimming history');
+    history.length = Math.max(1, Math.floor(history.length / 2));
+    try {
+      localStorage.setItem('flashsnap_history', JSON.stringify(history));
+    } catch { /* give up silently */ }
+  }
 }
 
 function clearHistory() {
@@ -110,7 +119,13 @@ function showToast(message, type = 'success') {
   toast.className = `toast toast-${type}`;
 
   const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-  toast.innerHTML = `<span class="toast-icon">${icon}</span><span>${message}</span>`;
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'toast-icon';
+  iconSpan.textContent = icon;
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = message;
+  toast.appendChild(iconSpan);
+  toast.appendChild(msgSpan);
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -422,12 +437,14 @@ function renderModelOptions(models, selectedModel) {
   const pro = models.filter(m => m.id.includes('pro'));
   const others = models.filter(m => !m.id.includes('flash') && !m.id.includes('pro'));
 
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   let html = '';
 
   if (flash.length > 0) {
     html += '<optgroup label="⚡ Flash 系列">';
     flash.forEach(m => {
-      html += `<option value="${m.id}">${m.name}</option>`;
+      html += `<option value="${esc(m.id)}">${esc(m.name)}</option>`;
     });
     html += '</optgroup>';
   }
@@ -435,7 +452,7 @@ function renderModelOptions(models, selectedModel) {
   if (pro.length > 0) {
     html += '<optgroup label="💎 Pro 系列">';
     pro.forEach(m => {
-      html += `<option value="${m.id}">${m.name}</option>`;
+      html += `<option value="${esc(m.id)}">${esc(m.name)}</option>`;
     });
     html += '</optgroup>';
   }
@@ -443,7 +460,7 @@ function renderModelOptions(models, selectedModel) {
   if (others.length > 0) {
     html += '<optgroup label="🔧 其他">';
     others.forEach(m => {
-      html += `<option value="${m.id}">${m.name}</option>`;
+      html += `<option value="${esc(m.id)}">${esc(m.name)}</option>`;
     });
     html += '</optgroup>';
   }

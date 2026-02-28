@@ -172,7 +172,7 @@ async function captureToDataUrl(iframe) {
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<Blob>}
  */
-export async function captureToBlob(iframe) {
+async function captureToBlob(iframe) {
     const dataUrl = await captureToDataUrl(iframe);
     const response = await fetch(dataUrl);
     return response.blob();
@@ -180,16 +180,26 @@ export async function captureToBlob(iframe) {
 
 /**
  * 复制图片到剪贴板
+ *
+ * 关键设计：将 captureToBlob() 返回的 Promise 直接传给 ClipboardItem，
+ * 而不是先 await 再传入已完成的 Blob。
+ *
+ * 原因：浏览器 Clipboard API 要求 clipboard.write() 在用户手势（点击）的
+ * 同步上下文中调用。如果先 await 截图（可能耗时数秒），等完成后再调用
+ * clipboard.write()，浏览器会认为用户手势已过期，抛出 NotAllowedError。
+ *
+ * 将 Promise 直接传入 ClipboardItem 后，clipboard.write() 在点击瞬间
+ * 同步调用，浏览器立即注册写入意图，异步截图完成后自动填充数据。
+ *
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<boolean>}
  */
 export async function copyToClipboard(iframe) {
     try {
-        const blob = await captureToBlob(iframe);
-
+        // 同步调用 clipboard.write()，传入 Promise 以保持用户手势上下文
         await navigator.clipboard.write([
             new ClipboardItem({
-                'image/png': blob,
+                'image/png': captureToBlob(iframe),
             }),
         ]);
 
@@ -204,5 +214,3 @@ export async function copyToClipboard(iframe) {
         throw error;
     }
 }
-
-

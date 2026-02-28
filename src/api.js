@@ -6,16 +6,22 @@
 import { GoogleGenAI } from '@google/genai';
 
 let aiInstance = null;
+let aiInstanceKey = null;  // 缓存 key，用于判断是否需要重新创建
 
 /**
- * 获取或创建 AI 实例
+ * 获取或创建 AI 实例（参数不变时复用已有实例）
  */
 function getAI(apiKey, baseUrl) {
+    const cacheKey = `${apiKey}|${baseUrl || ''}`;
+    if (aiInstance && aiInstanceKey === cacheKey) {
+        return aiInstance;
+    }
     const options = { apiKey };
     if (baseUrl) {
         options.httpOptions = { baseUrl };
     }
     aiInstance = new GoogleGenAI(options);
+    aiInstanceKey = cacheKey;
     return aiInstance;
 }
 

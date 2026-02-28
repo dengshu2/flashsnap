@@ -1,0 +1,11 @@
+services:
+  flashsnap:
+    build: .
+    container_name: flashsnap
+    restart: unless-stopped
+    networks:
+      - npm-network
+
+networks:
+  npm-network:
+    external: true

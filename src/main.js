@@ -2,7 +2,7 @@
  * FlashSnap — 主逻辑
  */
 
-import { generateCard } from './api.js';
+import { generateCard, testConnection, fetchModels } from './api.js';
 import { copyToClipboard, downloadAsPNG } from './export.js';
 import { CARD_SYSTEM_PROMPT } from './prompts.js';
 
@@ -45,6 +45,10 @@ const els = {
   modelSelect: $('#model-select'),
   baseUrlInput: $('#base-url-input'),
   btnToggleKey: $('#btn-toggle-key'),
+  btnTestApi: $('#btn-test-api'),
+  apiTestStatus: $('#api-test-status'),
+  btnRefreshModels: $('#btn-refresh-models'),
+  modelHint: $('#model-hint'),
 
   // History modal
   historyModal: $('#history-modal'),
@@ -300,9 +304,29 @@ function handleRegenerate() {
 function showSettingsModal() {
   const settings = getSettings();
   els.apiKeyInput.value = settings.apiKey;
-  els.modelSelect.value = settings.model;
   els.baseUrlInput.value = settings.baseUrl;
+  els.apiTestStatus.textContent = '';
+  els.apiTestStatus.className = 'api-test-status';
   els.settingsModal.style.display = 'flex';
+
+  // If we have a key, try to load models and restore selection
+  if (settings.apiKey) {
+    loadModelsAndRestore(settings);
+  } else {
+    // Reset to default
+    els.modelSelect.innerHTML = '<option value="gemini-2.5-flash">Gemini 2.5 Flash（默认）</option>';
+  }
+}
+
+async function loadModelsAndRestore(settings) {
+  // Try loading cached models first for faster display
+  const cached = getCachedModels();
+  if (cached && cached.length > 0) {
+    renderModelOptions(cached, settings.model);
+    els.modelHint.textContent = `已加载 ${cached.length} 个模型（缓存）`;
+  }
+  // Then fetch fresh in background
+  await handleRefreshModels(true);
 }
 
 function hideSettingsModal() {
@@ -327,6 +351,134 @@ function handleSaveSettings() {
 function toggleKeyVisibility() {
   const input = els.apiKeyInput;
   input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+// ============================================
+// API Test
+// ============================================
+async function handleTestConnection() {
+  const apiKey = els.apiKeyInput.value.trim();
+  const baseUrl = els.baseUrlInput.value.trim();
+
+  if (!apiKey) {
+    showToast('请先输入 API Key', 'error');
+    els.apiKeyInput.focus();
+    return;
+  }
+
+  // Show loading state
+  const btnText = els.btnTestApi.querySelector('span');
+  btnText.textContent = '测试中...';
+  els.btnTestApi.disabled = true;
+  els.apiTestStatus.textContent = '正在连接...';
+  els.apiTestStatus.className = 'api-test-status status-loading';
+
+  const result = await testConnection(apiKey, baseUrl || undefined);
+
+  // Show result
+  btnText.textContent = '测试连接';
+  els.btnTestApi.disabled = false;
+  els.apiTestStatus.textContent = result.message;
+  els.apiTestStatus.className = `api-test-status ${result.success ? 'status-success' : 'status-error'}`;
+
+  // If success, also refresh models
+  if (result.success) {
+    handleRefreshModels();
+  }
+}
+
+// ============================================
+// Dynamic Model List
+// ============================================
+function getCachedModels() {
+  try {
+    const data = JSON.parse(localStorage.getItem('flashsnap_models_cache') || 'null');
+    if (data && data.models && Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+      return data.models;
+    }
+  } catch { }
+  return null;
+}
+
+function setCachedModels(models) {
+  localStorage.setItem('flashsnap_models_cache', JSON.stringify({
+    models,
+    timestamp: Date.now(),
+  }));
+}
+
+function renderModelOptions(models, selectedModel) {
+  // Group models by type
+  const flash = models.filter(m => m.id.includes('flash'));
+  const pro = models.filter(m => m.id.includes('pro'));
+  const others = models.filter(m => !m.id.includes('flash') && !m.id.includes('pro'));
+
+  let html = '';
+
+  if (flash.length > 0) {
+    html += '<optgroup label="⚡ Flash 系列">';
+    flash.forEach(m => {
+      html += `<option value="${m.id}">${m.name}</option>`;
+    });
+    html += '</optgroup>';
+  }
+
+  if (pro.length > 0) {
+    html += '<optgroup label="💎 Pro 系列">';
+    pro.forEach(m => {
+      html += `<option value="${m.id}">${m.name}</option>`;
+    });
+    html += '</optgroup>';
+  }
+
+  if (others.length > 0) {
+    html += '<optgroup label="🔧 其他">';
+    others.forEach(m => {
+      html += `<option value="${m.id}">${m.name}</option>`;
+    });
+    html += '</optgroup>';
+  }
+
+  els.modelSelect.innerHTML = html;
+
+  // Restore selection
+  if (selectedModel) {
+    const optionExists = [...els.modelSelect.options].some(o => o.value === selectedModel);
+    if (optionExists) {
+      els.modelSelect.value = selectedModel;
+    }
+  }
+}
+
+async function handleRefreshModels(silent = false) {
+  const apiKey = els.apiKeyInput.value.trim();
+  const baseUrl = els.baseUrlInput.value.trim();
+
+  if (!apiKey) {
+    if (!silent) showToast('请先输入 API Key', 'error');
+    return;
+  }
+
+  // Show loading
+  els.btnRefreshModels.classList.add('spinning');
+  els.modelSelect.classList.add('loading');
+  els.modelHint.textContent = '正在获取模型列表...';
+
+  const currentModel = els.modelSelect.value || getSettings().model;
+  const result = await fetchModels(apiKey, baseUrl || undefined);
+
+  els.btnRefreshModels.classList.remove('spinning');
+  els.modelSelect.classList.remove('loading');
+
+  if (result.success && result.models.length > 0) {
+    setCachedModels(result.models);
+    renderModelOptions(result.models, currentModel);
+    els.modelHint.textContent = `已加载 ${result.models.length} 个可用模型`;
+    if (!silent) showToast(`已获取 ${result.models.length} 个模型`);
+  } else {
+    els.modelHint.textContent = result.message || '获取失败，使用默认模型';
+    if (!silent) showToast(result.message || '获取模型列表失败', 'error');
+  }
 }
 
 // ============================================
@@ -451,6 +603,8 @@ function init() {
   els.btnCloseSettings.addEventListener('click', hideSettingsModal);
   els.btnSaveSettings.addEventListener('click', handleSaveSettings);
   els.btnToggleKey.addEventListener('click', toggleKeyVisibility);
+  els.btnTestApi.addEventListener('click', handleTestConnection);
+  els.btnRefreshModels.addEventListener('click', () => handleRefreshModels(false));
 
   // History
   els.btnHistory.addEventListener('click', showHistoryModal);

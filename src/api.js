@@ -20,6 +20,104 @@ function getAI(apiKey, baseUrl) {
 }
 
 /**
+ * 测试 API 连接是否正常
+ * @param {string} apiKey
+ * @param {string} [baseUrl]
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export async function testConnection(apiKey, baseUrl) {
+    try {
+        const ai = getAI(apiKey, baseUrl);
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: 'Hi, respond with just "OK".',
+            config: { maxOutputTokens: 10 },
+        });
+        if (response.text) {
+            return { success: true, message: 'API 连接正常！' };
+        }
+        return { success: false, message: '未收到有效响应' };
+    } catch (error) {
+        let message = 'API 连接失败：';
+        if (error.message?.includes('API key') || error.message?.includes('401') || error.message?.includes('403')) {
+            message += 'API Key 无效';
+        } else if (error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+            message += '网络连接失败，请检查网络或 Base URL';
+        } else if (error.message?.includes('404')) {
+            message += 'API 地址不正确，请检查 Base URL';
+        } else {
+            message += error.message || '未知错误';
+        }
+        return { success: false, message };
+    }
+}
+
+/**
+ * 获取可用模型列表
+ * @param {string} apiKey
+ * @param {string} [baseUrl]
+ * @returns {Promise<{success: boolean, models?: Array<{id: string, name: string}>, message?: string}>}
+ */
+export async function fetchModels(apiKey, baseUrl) {
+    try {
+        const ai = getAI(apiKey, baseUrl);
+        const pager = await ai.models.list({ config: { pageSize: 100 } });
+
+        const models = [];
+        for await (const model of pager) {
+            // Only include gemini models that support content generation
+            const name = model.name || '';
+            const displayName = model.displayName || name;
+
+            // Filter: only gemini models, skip embedding/AQA/other special models
+            if (
+                name.includes('gemini') &&
+                !name.includes('embedding') &&
+                !name.includes('aqa') &&
+                !name.includes('imagen') &&
+                !name.includes('bisheng')
+            ) {
+                // model.name comes as "models/gemini-2.0-flash" — extract just the ID
+                const modelId = name.replace('models/', '');
+                models.push({
+                    id: modelId,
+                    name: displayName,
+                });
+            }
+        }
+
+        // Sort: prioritize flash models, then by version (newest first)
+        models.sort((a, b) => {
+            // Extract version numbers for sorting
+            const getVersion = (id) => {
+                const match = id.match(/(\d+)\.(\d+)/);
+                return match ? parseFloat(`${match[1]}.${match[2]}`) : 0;
+            };
+            const vA = getVersion(a.id);
+            const vB = getVersion(b.id);
+
+            // Higher version first
+            if (vB !== vA) return vB - vA;
+
+            // Flash before Pro before others
+            const typeOrder = (id) => {
+                if (id.includes('flash')) return 0;
+                if (id.includes('pro')) return 1;
+                return 2;
+            };
+            return typeOrder(a.id) - typeOrder(b.id);
+        });
+
+        return { success: true, models };
+    } catch (error) {
+        return {
+            success: false,
+            message: `获取模型列表失败：${error.message || '未知错误'}`,
+        };
+    }
+}
+
+/**
  * 从 AI 返回的文本中提取纯 HTML 代码
  * 去除 markdown 代码块标记等
  */

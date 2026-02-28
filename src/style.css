@@ -272,9 +272,20 @@ body {
   position: relative;
 }
 
+.preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 .preview-actions {
   display: flex;
   gap: var(--space-sm);
+}
+
+/* Hidden on desktop — both panels are visible */
+.btn-back-edit {
+  display: none;
 }
 
 .preview-container {
@@ -819,15 +830,302 @@ select optgroup {
   color: var(--color-text-secondary);
 }
 
-/* --- Responsive --- */
-@media (max-width: 900px) {
+/* --- Mobile Tab Bar (hidden on desktop) --- */
+.mobile-tab-bar {
+  display: none;
+}
+
+/* --- Responsive: Mobile --- */
+@media (max-width: 768px) {
+
+  /* Fix mobile scrolling: allow page to scroll */
+  body {
+    overflow: auto;
+    overflow: overlay;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Use min-height + overflow-y so content is scrollable if needed */
+  #app {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* --- Mobile Tab Bar --- */
+  .mobile-tab-bar {
+    display: flex;
+    background: var(--color-bg-panel);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .mobile-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 0;
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+  }
+
+  .mobile-tab::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: transparent;
+    border-radius: 2px;
+    transition: all var(--transition-normal);
+  }
+
+  .mobile-tab.active {
+    color: var(--color-accent);
+  }
+
+  .mobile-tab.active::after {
+    background: var(--color-accent);
+    box-shadow: 0 0 8px var(--color-accent-glow);
+  }
+
+  /* Notification dot for preview tab when content is available */
+  .mobile-tab.has-content::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: calc(50% - 30px);
+    width: 6px;
+    height: 6px;
+    background: var(--color-accent);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--color-accent-glow);
+  }
+
+  .mobile-tab.active.has-content::before {
+    display: none;
+  }
+
+  /* --- Header: compact --- */
+  .app-header {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .logo-icon {
+    font-size: 20px;
+  }
+
+  .logo h1 {
+    font-size: 17px;
+  }
+
+  .version-badge {
+    display: none;
+  }
+
+  /* Touch targets: enlarge */
+  .header-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* --- Main Layout: block flow for mobile scrolling --- */
   .app-main {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
+    display: block;
+    overflow: visible;
+    flex: 1;
+  }
+
+  /* --- Tab Panel Switching --- */
+  .panel-input,
+  .panel-preview {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 100px);
+    /* fallback */
+    min-height: calc(100dvh - 100px);
   }
 
   .panel-input {
     border-right: none;
-    border-bottom: 1px solid var(--color-border);
+  }
+
+  /* Hide inactive panels */
+  .panel-input.panel-hidden,
+  .panel-preview.panel-hidden {
+    display: none;
+  }
+
+  /* --- Input Panel: mobile optimized --- */
+  .panel-input .input-wrapper {
+    padding: var(--space-sm) var(--space-md);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-input .input-wrapper textarea {
+    font-size: 16px;
+    /* prevents iOS zoom on focus */
+    line-height: 1.6;
+    border-radius: var(--radius-sm);
+    min-height: 200px;
+    flex: 1;
+  }
+
+  .panel-input .panel-header {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .panel-input .input-actions {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .panel-input .input-actions .btn-primary {
+    padding: 14px 20px;
+    font-size: 15px;
+  }
+
+  /* --- Preview Panel: mobile optimized --- */
+  .panel-preview .panel-header {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .preview-container {
+    padding: var(--space-md);
+    flex: 1;
+    min-height: 300px;
+  }
+
+  /* Preview actions: better touch targets */
+  .preview-actions .btn-action {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  /* Back-to-edit button: visible on mobile */
+  .btn-back-edit {
+    display: inline-flex;
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--color-accent);
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .btn-back-edit:hover {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.5);
+  }
+
+  /* --- Modals: full-width on mobile --- */
+  .modal {
+    width: 100%;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    margin-top: auto;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .modal-lg {
+    width: 100%;
+  }
+
+  .modal-body {
+    padding: var(--space-md);
+  }
+
+  .modal-header {
+    padding: var(--space-md);
+  }
+
+  .modal-footer {
+    padding: var(--space-sm) var(--space-md);
+    padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* --- Form elements: larger for touch --- */
+  input[type="text"],
+  input[type="password"],
+  select {
+    padding: 12px 14px;
+    font-size: 16px;
+    /* prevent iOS auto-zoom */
+  }
+
+  /* --- Toast: bottom center on mobile --- */
+  .toast-container {
+    bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-md);
+    left: var(--space-md);
+  }
+
+  .toast {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* --- History items: larger touch targets --- */
+  .history-item {
+    padding: var(--space-md);
+  }
+
+  .history-item-delete {
+    padding: 10px;
+  }
+
+  .history-item-text {
+    font-size: 14px;
+  }
+
+  /* --- Empty state: adjust for mobile --- */
+  .empty-icon {
+    font-size: 48px;
+  }
+
+  .empty-state {
+    padding: var(--space-xl) var(--space-md);
+  }
+
+  .empty-title {
+    font-size: 15px;
+  }
+
+  .empty-desc {
+    font-size: 13px;
+  }
+}
+
+/* Small phones (< 360px) */
+@media (max-width: 360px) {
+  .app-header {
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .logo h1 {
+    font-size: 15px;
+  }
+
+  .mobile-tab {
+    font-size: 12px;
   }
 }

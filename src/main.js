@@ -57,6 +57,14 @@ const els = {
   btnCloseHistory: $('#btn-close-history'),
   btnClearHistory: $('#btn-clear-history'),
   historyList: $('#history-list'),
+
+  // Mobile tabs
+  mobileTabBar: $('#mobile-tab-bar'),
+  tabInput: $('#tab-input'),
+  tabPreview: $('#tab-preview'),
+  panelInput: document.querySelector('.panel-input'),
+  panelPreview: document.querySelector('.panel-preview'),
+  btnBackEdit: $('#btn-back-edit'),
 };
 
 // ============================================
@@ -151,10 +159,49 @@ function setGenerating(isGenerating) {
   if (isGenerating) {
     els.btnGenerate.querySelector('.btn-text').textContent = '生成中...';
     els.btnGenerate.querySelector('.btn-icon').textContent = '⏳';
+    // On mobile, switch to preview tab to show loading state
+    if (isMobile()) {
+      switchTab('preview');
+    }
   } else {
     els.btnGenerate.querySelector('.btn-text').textContent = '生成卡片';
     els.btnGenerate.querySelector('.btn-icon').textContent = '✨';
   }
+}
+
+// ============================================
+// Mobile Tab Switching
+// ============================================
+function isMobile() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function switchTab(tabName) {
+  // Update tab buttons
+  els.tabInput.classList.toggle('active', tabName === 'input');
+  els.tabPreview.classList.toggle('active', tabName === 'preview');
+
+  // Switch panels
+  els.panelInput.classList.toggle('panel-hidden', tabName !== 'input');
+  els.panelPreview.classList.toggle('panel-hidden', tabName !== 'preview');
+
+  // Clear notification dot when switching to preview
+  if (tabName === 'preview') {
+    els.tabPreview.classList.remove('has-content');
+  }
+}
+
+function initMobileTabs() {
+  if (!isMobile()) {
+    // Desktop: ensure both panels are visible
+    els.panelInput.classList.remove('panel-hidden');
+    els.panelPreview.classList.remove('panel-hidden');
+    return;
+  }
+
+  // Mobile: default to input tab, hide preview
+  els.panelPreview.classList.add('panel-hidden');
+  els.panelInput.classList.remove('panel-hidden');
 }
 
 /**
@@ -263,6 +310,10 @@ async function handleGenerate() {
       showState('preview');
       setGenerating(false);
       addHistory(input, html);
+      // On mobile, switch to preview & show a dot if not already there
+      if (isMobile()) {
+        switchTab('preview');
+      }
       showToast('信息卡生成完成！');
     },
     onError(error) {
@@ -556,6 +607,7 @@ function renderHistoryList() {
         renderToIframe(entry.html);
         showState('preview');
         hideHistoryModal();
+        if (isMobile()) switchTab('preview');
         showToast('已加载历史记录');
       }
     });
@@ -638,6 +690,9 @@ function init() {
 
   els.btnRegenerate.addEventListener('click', handleRegenerate);
 
+  // Back-to-edit button (mobile)
+  els.btnBackEdit.addEventListener('click', () => switchTab('input'));
+
   // Settings
   els.btnSettings.addEventListener('click', showSettingsModal);
   els.btnCloseSettings.addEventListener('click', hideSettingsModal);
@@ -675,6 +730,18 @@ function init() {
     }
   });
 
+  // --- Mobile Tab Switching ---
+  els.tabInput.addEventListener('click', () => switchTab('input'));
+  els.tabPreview.addEventListener('click', () => switchTab('preview'));
+
+  // Initialize mobile layout
+  initMobileTabs();
+
+  // Re-initialize on resize (e.g. orientation change)
+  window.addEventListener('resize', () => {
+    initMobileTabs();
+  });
+
   // Check if API key is configured, show settings if not
   const settings = getSettings();
   if (!settings.apiKey) {
@@ -684,8 +751,10 @@ function init() {
     }, 500);
   }
 
-  // Focus input
-  els.inputText.focus();
+  // Focus input (only on desktop)
+  if (!isMobile()) {
+    els.inputText.focus();
+  }
 }
 
 // Boot

@@ -5,31 +5,29 @@
 /* --- CSS Variables (Design Tokens) --- */
 :root {
   /* Colors */
-  --color-bg: #0f0f1a;
-  --color-bg-elevated: #1a1a2e;
-  --color-bg-panel: rgba(26, 26, 46, 0.7);
-  --color-bg-glass: rgba(26, 26, 46, 0.5);
-  --color-surface: #16213e;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.15);
+  --color-bg: #f5f6fa;
+  --color-bg-elevated: #ffffff;
+  --color-bg-panel: rgba(255, 255, 255, 0.95);
+  --color-bg-glass: rgba(255, 255, 255, 0.8);
+  --color-surface: #eef0f7;
+  --color-border: rgba(0, 0, 0, 0.07);
+  --color-border-hover: rgba(0, 0, 0, 0.14);
 
-  --color-text: #e8e8f0;
-  --color-text-secondary: #8888a8;
-  --color-text-muted: #555570;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #5c5c7a;
+  --color-text-muted: #a0a0be;
 
   --color-accent: #f59e0b;
-  --color-accent-hover: #fbbf24;
-  --color-accent-glow: rgba(245, 158, 11, 0.25);
+  --color-accent-hover: #d97706;
+  --color-accent-glow: rgba(245, 158, 11, 0.2);
 
   --color-success: #10b981;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
 
   /* Gradients */
-  --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-  --gradient-bg: radial-gradient(ellipse at 20% 50%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 100%, rgba(239, 68, 68, 0.05) 0%, transparent 50%);
+  --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  --gradient-bg: none;
 
   /* Typography */
   --font-primary: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -44,16 +42,16 @@
   --space-2xl: 48px;
 
   /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px var(--color-accent-glow);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 2px 8px rgba(245, 158, 11, 0.25);
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -88,40 +86,11 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--gradient-bg);
+  background: var(--color-bg);
   position: relative;
 }
 
-/* Noise texture overlay */
-#app::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* --- Header --- */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-md) var(--space-xl);
-  border-bottom: 1px solid var(--color-border);
-  backdrop-filter: blur(20px);
-  background: var(--color-bg-glass);
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-}
-
+/* --- Logo & Header Controls --- */
 .logo {
   display: flex;
   align-items: center;
@@ -129,28 +98,14 @@ body {
 }
 
 .logo-icon {
-  font-size: 24px;
-  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.5));
+  font-size: 22px;
 }
 
 .logo h1 {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  background: var(--gradient-accent);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-accent);
   letter-spacing: -0.02em;
-}
-
-.version-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
-  border-radius: 20px;
-  border: 1px solid var(--color-border);
 }
 
 .header-right {
@@ -174,7 +129,7 @@ body {
 }
 
 .header-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface);
   border-color: var(--color-border-hover);
   color: var(--color-text);
 }
@@ -216,8 +171,7 @@ body {
 /* --- Input Panel --- */
 .panel-input {
   border-right: 1px solid var(--color-border);
-  background: var(--color-bg-panel);
-  backdrop-filter: blur(20px);
+  background: var(--color-bg-elevated);
 }
 
 .char-count {
@@ -235,8 +189,8 @@ body {
 .input-wrapper textarea {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   padding: var(--space-md);
   color: var(--color-text);
@@ -245,7 +199,7 @@ body {
   line-height: 1.7;
   resize: none;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .input-wrapper textarea::placeholder {
@@ -253,8 +207,9 @@ body {
 }
 
 .input-wrapper textarea:focus {
-  border-color: rgba(245, 158, 11, 0.4);
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+  background: var(--color-bg-elevated);
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.08);
 }
 
 .input-actions {
@@ -270,6 +225,7 @@ body {
 .panel-preview {
   background: var(--color-bg);
   position: relative;
+  border-left: none;
 }
 
 .preview-header-actions {
@@ -296,15 +252,7 @@ body {
   justify-content: center;
   padding: var(--space-lg);
   position: relative;
-
-  /* checkerboard pattern for preview bg */
-  background-image:
-    linear-gradient(45deg, rgba(255, 255, 255, 0.02) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255, 255, 255, 0.02) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.02) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.02) 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background: var(--color-bg);
 }
 
 #preview-frame {
@@ -412,7 +360,7 @@ body {
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 0 30px var(--color-accent-glow);
+  box-shadow: var(--shadow-md), var(--shadow-glow);
 }
 
 .btn-primary:active {
@@ -427,19 +375,19 @@ body {
 }
 
 .btn-ghost {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface);
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
 }
 
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-bg);
   color: var(--color-text);
   border-color: var(--color-border-hover);
 }
 
 .btn-action {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-bg-elevated);
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
   padding: 6px 12px;
@@ -447,7 +395,7 @@ body {
 }
 
 .btn-action:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface);
   color: var(--color-text);
   border-color: var(--color-border-hover);
 }
@@ -465,8 +413,8 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
   z-index: 100;
   display: flex;
   align-items: center;
@@ -549,7 +497,7 @@ body {
 }
 
 .modal-close:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 
@@ -614,7 +562,7 @@ input[type="password"],
 select {
   width: 100%;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text);
@@ -724,7 +672,7 @@ select {
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -732,7 +680,7 @@ select {
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--color-bg);
   border-color: var(--color-border-hover);
 }
 
@@ -854,15 +802,18 @@ select optgroup {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* --- Mobile Tab Bar --- */
+  /* --- Mobile Tab Bar (fixed bottom) --- */
   .mobile-tab-bar {
     display: flex;
-    background: var(--color-bg-panel);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-    position: relative;
-    z-index: 10;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--color-bg-elevated);
+    border-top: 1px solid var(--color-border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.05);
   }
 
   .mobile-tab {
@@ -901,7 +852,6 @@ select optgroup {
 
   .mobile-tab.active::after {
     background: var(--color-accent);
-    box-shadow: 0 0 8px var(--color-accent-glow);
   }
 
   /* Notification dot for preview tab when content is available */
@@ -914,34 +864,16 @@ select optgroup {
     height: 6px;
     background: var(--color-accent);
     border-radius: 50%;
-    box-shadow: 0 0 6px var(--color-accent-glow);
   }
 
   .mobile-tab.active.has-content::before {
     display: none;
   }
 
-  /* --- Header: compact --- */
-  .app-header {
-    padding: var(--space-sm) var(--space-md);
-  }
-
-  .logo-icon {
-    font-size: 20px;
-  }
-
-  .logo h1 {
-    font-size: 17px;
-  }
-
-  .version-badge {
-    display: none;
-  }
-
   /* Touch targets: enlarge */
   .header-btn {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
   }
 
   /* --- Main Layout: block flow for mobile scrolling --- */
@@ -956,9 +888,9 @@ select optgroup {
   .panel-preview {
     display: flex;
     flex-direction: column;
-    min-height: calc(100vh - 100px);
-    /* fallback */
-    min-height: calc(100dvh - 100px);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   }
 
   .panel-input {
@@ -1072,9 +1004,9 @@ select optgroup {
     /* prevent iOS auto-zoom */
   }
 
-  /* --- Toast: bottom center on mobile --- */
+  /* --- Toast: above bottom tab bar on mobile --- */
   .toast-container {
-    bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     right: var(--space-md);
     left: var(--space-md);
   }

@@ -64,7 +64,7 @@ const els = {
   tabPreview: $('#tab-preview'),
   panelInput: document.querySelector('.panel-input'),
   panelPreview: document.querySelector('.panel-preview'),
-  btnBackEdit: $('#btn-back-edit'),
+
 };
 
 // ============================================
@@ -690,8 +690,7 @@ function init() {
 
   els.btnRegenerate.addEventListener('click', handleRegenerate);
 
-  // Back-to-edit button (mobile)
-  els.btnBackEdit.addEventListener('click', () => switchTab('input'));
+
 
   // Settings
   els.btnSettings.addEventListener('click', showSettingsModal);

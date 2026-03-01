@@ -106,6 +106,11 @@ function collectInlineStyles(iframe) {
 }
 
 /**
+ * 卡片设计固定宽度（与 prompts.js 中的规范一致）
+ */
+const CARD_DESIGN_WIDTH = 900;
+
+/**
  * 获取 iframe 中的卡片根元素
  * 优先查找 .card 类元素，否则取 body 的第一个子元素
  */
@@ -121,6 +126,10 @@ function getCardElement(iframe) {
 
 /**
  * 将 iframe 中的卡片内容转换为 data URL
+ *
+ * 关键修复：导出前重置 iframe 的 scale() 变换，并使用固定 900px 宽度，
+ * 确保导出图片的布局与预览完全一致。
+ *
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<string>} PNG data URL
  */
@@ -146,23 +155,44 @@ async function captureToDataUrl(iframe) {
     // 合并：内联样式 + 嵌入字体
     const combinedCSS = inlineCSS + '\n' + fontCSS;
 
-    // 4. 生成图片
+    // 4. 重置 iframe 的 transform，确保尺寸读取准确
+    const origTransform = iframe.style.transform;
+    const origMarginBottom = iframe.style.marginBottom;
+    const origWidth = iframe.style.width;
+
+    iframe.style.transform = 'none';
+    iframe.style.marginBottom = '0';
+    iframe.style.width = CARD_DESIGN_WIDTH + 'px';
+
+    // 等待浏览器重排，确保尺寸正确
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 读取重排后的准确高度
+    const cardHeight = cardEl.scrollHeight;
+
+    // 5. 生成图片 — 使用固定宽度确保布局一致
     const dataUrl = await toPng(cardEl, {
         quality: 1.0,
         pixelRatio: 2,
         backgroundColor: null, // 不强制白色背景，使用卡片自身的背景
-        width: cardEl.scrollWidth,
-        height: cardEl.scrollHeight,
+        width: CARD_DESIGN_WIDTH,
+        height: cardHeight,
         // 将预嵌入的字体 CSS 与样式传递给 html-to-image
         fontEmbedCSS: combinedCSS,
         style: {
             margin: '0',
             transform: 'none',
+            width: CARD_DESIGN_WIDTH + 'px',
         },
         filter: (node) => {
             return node.tagName !== 'SCRIPT';
         },
     });
+
+    // 6. 恢复 iframe 原始样式
+    iframe.style.transform = origTransform;
+    iframe.style.marginBottom = origMarginBottom;
+    iframe.style.width = origWidth;
 
     return dataUrl;
 }

@@ -776,8 +776,11 @@ select optgroup {
 /* --- Responsive: Mobile --- */
 @media (max-width: 768px) {
 
-  /* Fix mobile scrolling: body is the single scroll container */
+  /* Fix mobile scrolling: body is the single scroll container.
+     overflow-x: hidden prevents the 900px iframe layout box from
+     creating a horizontal scrollbar (the scaled visual fits in the screen). */
   body {
+    overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }

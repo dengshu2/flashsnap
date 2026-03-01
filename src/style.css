@@ -783,6 +783,8 @@ select optgroup {
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overflow-anchor: none;
+    /* Prevent browser from fighting scrollTo after DOM changes */
   }
 
   /* #app grows with content, does NOT create a second scroll context */
@@ -906,7 +908,8 @@ select optgroup {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: visible; /* Reset desktop overflow:hidden so textarea isn't clipped */
+    overflow: visible;
+    /* Reset desktop overflow:hidden so textarea isn't clipped */
   }
 
   .panel-input .input-wrapper textarea {
@@ -940,12 +943,20 @@ select optgroup {
   /* --- Preview Panel: mobile optimized --- */
   .panel-preview .panel-header {
     padding: var(--space-sm) var(--space-md);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-bg-elevated);
+    border-bottom: 1px solid var(--color-border);
   }
 
   .preview-container {
     padding: var(--space-md);
     flex: 1;
     min-height: 300px;
+    position: relative;
+    z-index: 1;
+    /* Below sticky header's z-index:10, prevent click interception */
   }
 
   /* Preview actions: better touch targets */

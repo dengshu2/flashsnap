@@ -177,17 +177,37 @@ function isMobile() {
 }
 
 function switchTab(tabName) {
-  // Update tab buttons
+  // 1. 收起键盘（必须在 DOM 变化前）
+  if (isMobile() && document.activeElement) {
+    document.activeElement.blur();
+  }
+
+  // 2. 先 scroll 到顶（在面板切换前，减少 layout shift 影响）
+  if (isMobile()) {
+    forceScrollTop();
+  }
+
+  // 3. Update tab buttons
   els.tabInput.classList.toggle('active', tabName === 'input');
   els.tabPreview.classList.toggle('active', tabName === 'preview');
 
-  // Switch panels
+  // 4. Switch panels
   els.panelInput.classList.toggle('panel-hidden', tabName !== 'input');
   els.panelPreview.classList.toggle('panel-hidden', tabName !== 'preview');
 
   // Clear notification dot when switching to preview
   if (tabName === 'preview') {
     els.tabPreview.classList.remove('has-content');
+  }
+
+  // 5. 面板切换后多次延迟 scroll，覆盖键盘收起各阶段的 viewport 变化
+  if (isMobile()) {
+    forceScrollTop();
+    requestAnimationFrame(forceScrollTop);
+    setTimeout(forceScrollTop, 50);
+    setTimeout(forceScrollTop, 150);
+    setTimeout(forceScrollTop, 350);
+    setTimeout(forceScrollTop, 600); // 覆盖 iOS 键盘完全收起
   }
 }
 
@@ -211,6 +231,11 @@ function renderToIframe(html) {
   const iframe = els.previewFrame;
   const container = els.previewContainer;
 
+  // Hide iframe visually while setting up layout to prevent flash.
+  // opacity:0 keeps the element in flow so dimensions can be measured.
+  iframe.style.opacity = '0';
+  iframe.style.transition = 'none'; // disable transition during setup
+
   // Reset transform before measuring
   iframe.style.transform = 'none';
   iframe.style.transformOrigin = 'top left';
@@ -225,6 +250,7 @@ function renderToIframe(html) {
   doc.close();
 
   // Auto-resize iframe to fit content, then scale to fit container
+  let revealed = false;
   const resizeIframe = () => {
     try {
       const body = doc.body;
@@ -256,6 +282,21 @@ function renderToIframe(html) {
         } else {
           iframe.style.transform = 'none';
           iframe.style.marginBottom = '0';
+        }
+
+        // Fade in once layout is correct (only once)
+        if (!revealed) {
+          revealed = true;
+          // Force a reflow so the browser applies opacity:0 before transitioning
+          iframe.offsetHeight;
+          iframe.style.transition = 'opacity 200ms ease';
+          iframe.style.opacity = '1';
+
+          // Scroll to top after iframe layout is stable (mobile)
+          if (isMobile()) {
+            forceScrollTop();
+            setTimeout(forceScrollTop, 50);
+          }
         }
       }
     } catch (e) {
@@ -294,6 +335,14 @@ async function handleGenerate() {
   showState('loading');
   els.loadingProgress.textContent = '';
 
+  // Scroll to top after all DOM changes have settled
+  if (isMobile()) {
+    forceScrollTop();
+    requestAnimationFrame(forceScrollTop);
+    setTimeout(forceScrollTop, 100);
+    setTimeout(forceScrollTop, 400);
+  }
+
   let chunkCount = 0;
 
   await generateCard({
@@ -312,9 +361,13 @@ async function handleGenerate() {
       showState('preview');
       setGenerating(false);
       addHistory(input, html);
-      // On mobile, switch to preview & show a dot if not already there
+      // On mobile, switch to preview & scroll to top after DOM settles
       if (isMobile()) {
         switchTab('preview');
+        // Extra scroll after iframe layout settles
+        requestAnimationFrame(forceScrollTop);
+        setTimeout(forceScrollTop, 200);
+        setTimeout(forceScrollTop, 500);
       }
       showToast('信息卡生成完成！');
     },
@@ -657,6 +710,19 @@ function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function forceScrollTop() {
+  // Primary: scrollIntoView on the visible panel header (more resilient than scrollTo)
+  const header = document.querySelector('.panel-preview:not(.panel-hidden) .panel-header')
+    || document.querySelector('.panel-input:not(.panel-hidden) .panel-header');
+  if (header) {
+    header.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }
+  // Fallback: force all scroll containers to 0
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  if (document.body) document.body.scrollTop = 0;
+  if (document.documentElement) document.documentElement.scrollTop = 0;
 }
 
 // ============================================

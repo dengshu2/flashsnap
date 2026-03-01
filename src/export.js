@@ -155,46 +155,65 @@ async function captureToDataUrl(iframe) {
     // 合并：内联样式 + 嵌入字体
     const combinedCSS = inlineCSS + '\n' + fontCSS;
 
-    // 4. 重置 iframe 的 transform，确保尺寸读取准确
-    const origTransform = iframe.style.transform;
-    const origMarginBottom = iframe.style.marginBottom;
-    const origWidth = iframe.style.width;
+    // 4. Create an off-screen clone iframe for capture.
+    //    This avoids ANY visual change to the visible iframe —
+    //    no transform reset, no opacity flash, no layout shift.
+    const srcDoc = iframe.contentDocument || iframe.contentWindow.document;
+    const fullHTML = '<!DOCTYPE html>\n' + srcDoc.documentElement.outerHTML;
 
-    iframe.style.transform = 'none';
-    iframe.style.marginBottom = '0';
-    iframe.style.width = CARD_DESIGN_WIDTH + 'px';
+    const clone = document.createElement('iframe');
+    clone.setAttribute('sandbox', 'allow-same-origin');
+    clone.style.cssText =
+        'position:fixed;left:-10000px;top:0;' +
+        'width:' + CARD_DESIGN_WIDTH + 'px;height:auto;' +
+        'border:none;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(clone);
 
-    // 等待浏览器重排，确保尺寸正确
-    await new Promise(resolve => setTimeout(resolve, 100));
+    try {
+        const cloneDoc = clone.contentDocument || clone.contentWindow.document;
+        cloneDoc.open();
+        cloneDoc.write(fullHTML);
+        cloneDoc.close();
 
-    // 读取重排后的准确高度
-    const cardHeight = cardEl.scrollHeight;
+        // Wait for clone content + fonts to load
+        await new Promise(resolve => {
+            clone.onload = resolve;
+            setTimeout(resolve, 600); // fallback
+        });
 
-    // 5. 生成图片 — 使用固定宽度确保布局一致
-    const dataUrl = await toPng(cardEl, {
-        quality: 1.0,
-        pixelRatio: 2,
-        backgroundColor: null, // 不强制白色背景，使用卡片自身的背景
-        width: CARD_DESIGN_WIDTH,
-        height: cardHeight,
-        // 将预嵌入的字体 CSS 与样式传递给 html-to-image
-        fontEmbedCSS: combinedCSS,
-        style: {
-            margin: '0',
-            transform: 'none',
-            width: CARD_DESIGN_WIDTH + 'px',
-        },
-        filter: (node) => {
-            return node.tagName !== 'SCRIPT';
-        },
-    });
+        try {
+            await clone.contentWindow.document.fonts.ready;
+        } catch (e) { /* fonts API not available */ }
 
-    // 6. 恢复 iframe 原始样式
-    iframe.style.transform = origTransform;
-    iframe.style.marginBottom = origMarginBottom;
-    iframe.style.width = origWidth;
+        // Small extra wait for rendering to settle
+        await new Promise(resolve => setTimeout(resolve, 100));
 
-    return dataUrl;
+        // 5. Capture from clone — already at correct width, no transform needed
+        const cloneCardEl = getCardElement(clone);
+        const cardHeight = cloneCardEl.scrollHeight;
+
+        const dataUrl = await toPng(cloneCardEl, {
+            quality: 1.0,
+            pixelRatio: 2,
+            backgroundColor: null,
+            width: CARD_DESIGN_WIDTH,
+            height: cardHeight,
+            fontEmbedCSS: combinedCSS,
+            style: {
+                margin: '0',
+                transform: 'none',
+                width: CARD_DESIGN_WIDTH + 'px',
+            },
+            filter: (node) => {
+                return node.tagName !== 'SCRIPT';
+            },
+        });
+
+        return dataUrl;
+    } finally {
+        // Always clean up the clone
+        clone.remove();
+    }
 }
 
 /**

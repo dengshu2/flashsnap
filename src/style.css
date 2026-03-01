@@ -134,6 +134,11 @@ body {
   color: var(--color-text);
 }
 
+a.header-btn {
+  text-decoration: none;
+  color: var(--color-text-secondary);
+}
+
 /* --- Main Layout --- */
 .app-main {
   display: grid;

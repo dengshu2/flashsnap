@@ -776,20 +776,18 @@ select optgroup {
 /* --- Responsive: Mobile --- */
 @media (max-width: 768px) {
 
-  /* Fix mobile scrolling: allow page to scroll */
+  /* Fix mobile scrolling: body is the single scroll container */
   body {
-    overflow: auto;
-    overflow: overlay;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Use min-height + overflow-y so content is scrollable if needed */
+  /* #app grows with content, does NOT create a second scroll context */
   #app {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: visible;
   }
 
   /* --- Mobile Tab Bar (fixed bottom) --- */
@@ -868,6 +866,17 @@ select optgroup {
     flex: 1;
   }
 
+  /* Fix scroll trap: preview-container must NOT create a nested scroll context.
+     The page (body) is the single scroll container on mobile. */
+  .preview-container {
+    overflow: visible;
+  }
+
+  /* Reset desktop overflow:hidden so content is not clipped under page scroll */
+  .panel {
+    overflow: visible;
+  }
+
   /* --- Tab Panel Switching --- */
   .panel-input,
   .panel-preview {
@@ -894,6 +903,7 @@ select optgroup {
     flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: visible; /* Reset desktop overflow:hidden so textarea isn't clipped */
   }
 
   .panel-input .input-wrapper textarea {

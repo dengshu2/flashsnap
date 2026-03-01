@@ -248,12 +248,21 @@ function renderToIframe(html) {
         if (containerWidth > 0 && containerWidth < cardWidth) {
           const scale = containerWidth / cardWidth;
           iframe.style.transform = `scale(${scale})`;
-          iframe.style.transformOrigin = 'top center';
-          // Adjust the container's visual space for the scaled iframe
-          iframe.style.marginBottom = `-${height * (1 - scale)}px`;
+          iframe.style.transformOrigin = 'top left';
+          // transform:scale doesn't affect layout flow, so we must collapse the
+          // extra space manually. Use a wrapper approach via marginBottom so the
+          // element following the iframe sees the correct visual height.
+          // Visual height after scale = height * scale
+          // Extra dead space = height * (1 - scale)  →  collapse with negative margin
+          iframe.style.marginBottom = `-${Math.ceil(height * (1 - scale))}px`;
+          // Also shift horizontally to center the scaled iframe within the container
+          const scaledWidth = cardWidth * scale;
+          const leftOffset = (containerWidth - scaledWidth) / 2;
+          iframe.style.marginLeft = `${Math.max(0, leftOffset)}px`;
         } else {
           iframe.style.transform = 'none';
           iframe.style.marginBottom = '0';
+          iframe.style.marginLeft = '0';
         }
       }
     } catch (e) {
@@ -736,9 +745,16 @@ function init() {
   // Initialize mobile layout
   initMobileTabs();
 
-  // Re-initialize on resize (e.g. orientation change)
+  // Re-initialize only on breakpoint crossing (not on every resize).
+  // iOS keyboard show/hide triggers resize, which would reset the active tab
+  // back to "input" every time the user dismisses the keyboard on the preview tab.
+  let wasMobile = isMobile();
   window.addEventListener('resize', () => {
-    initMobileTabs();
+    const nowMobile = isMobile();
+    if (nowMobile !== wasMobile) {
+      wasMobile = nowMobile;
+      initMobileTabs();
+    }
   });
 
   // Check if API key is configured, show settings if not

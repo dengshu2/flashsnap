@@ -176,7 +176,13 @@ function isMobile() {
   return window.matchMedia('(max-width: 768px)').matches;
 }
 
+let _activeTab = 'input';
+
 function switchTab(tabName) {
+  // No-op if already on this tab — prevents re-triggering the forceScrollTop
+  // setTimeout chain and interfering with in-flight touch events on iOS.
+  if (isMobile() && tabName === _activeTab) return;
+  _activeTab = tabName;
   // 1. 收起键盘（必须在 DOM 变化前）
   if (isMobile() && document.activeElement) {
     document.activeElement.blur();
@@ -207,7 +213,6 @@ function switchTab(tabName) {
     setTimeout(forceScrollTop, 50);
     setTimeout(forceScrollTop, 150);
     setTimeout(forceScrollTop, 350);
-    setTimeout(forceScrollTop, 600); // 覆盖 iOS 键盘完全收起
   }
 }
 
@@ -361,13 +366,9 @@ async function handleGenerate() {
       showState('preview');
       setGenerating(false);
       addHistory(input, html);
-      // On mobile, switch to preview & scroll to top after DOM settles
+      // On mobile, switch to preview tab (scroll-to-top is handled inside switchTab)
       if (isMobile()) {
         switchTab('preview');
-        // Extra scroll after iframe layout settles
-        requestAnimationFrame(forceScrollTop);
-        setTimeout(forceScrollTop, 200);
-        setTimeout(forceScrollTop, 500);
       }
       showToast('信息卡生成完成！');
     },

@@ -337,6 +337,7 @@ a.header-btn {
   border: none;
   transition: all var(--transition-fast);
   white-space: nowrap;
+  touch-action: manipulation; /* prevent 300ms tap delay and scroll interference on iOS */
 }
 
 .btn-primary {

@@ -149,7 +149,9 @@ function showState(stateName) {
   els.emptyState.style.display = stateName === 'empty' ? 'block' : 'none';
   els.loadingState.style.display = stateName === 'loading' ? 'block' : 'none';
   els.previewFrame.style.display = stateName === 'preview' ? 'block' : 'none';
-  els.previewActions.style.display = stateName === 'preview' ? 'flex' : 'none';
+  // Use visibility+opacity via CSS class instead of display:none so that
+  // the action buttons always occupy space and don't shift the header height.
+  els.previewActions.classList.toggle('visible', stateName === 'preview');
 }
 
 function setGenerating(isGenerating) {

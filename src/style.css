@@ -164,6 +164,12 @@ a.header-btn {
   padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+  /* Ensure both panel headers share the same height so the
+     border-bottom separator line stays aligned.  The left header's
+     natural height is driven by 32 px icon-buttons + 2×16 px padding
+     + 1 px border = 65 px.  Using min-height keeps the right header
+     from being shorter when its action buttons are hidden. */
+  min-height: 65px;
 }
 
 .panel-header h2 {
@@ -242,6 +248,16 @@ a.header-btn {
 .preview-actions {
   display: flex;
   gap: var(--space-sm);
+  /* Use visibility + opacity instead of display:none so the buttons
+     always occupy space and don't cause a header height change. */
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+}
+
+.preview-actions.visible {
+  visibility: visible;
+  opacity: 1;
 }
 
 
@@ -337,7 +353,8 @@ a.header-btn {
   border: none;
   transition: all var(--transition-fast);
   white-space: nowrap;
-  touch-action: manipulation; /* prevent 300ms tap delay and scroll interference on iOS */
+  touch-action: manipulation;
+  /* prevent 300ms tap delay and scroll interference on iOS */
 }
 
 .btn-primary {

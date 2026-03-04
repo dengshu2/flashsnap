@@ -25,6 +25,11 @@
   --color-error: #eb5757;
   --color-warning: #d97706;
 
+  --color-btn-primary-bg: #2f3437;
+  --color-btn-primary-bg-hover: #1a1b1c;
+  --color-btn-primary-text: #ffffff;
+  --color-hover-overlay: rgba(55, 53, 47, 0.08);
+
   /* Gradients */
   --gradient-accent: var(--color-accent);
   --gradient-bg: none;
@@ -57,6 +62,93 @@
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 400ms ease;
+}
+
+/* --- Dark Mode --- */
+[data-theme='dark'] {
+  --color-bg: #191919;
+  --color-bg-elevated: #202020;
+  --color-bg-panel: rgba(25, 25, 25, 0.95);
+  --color-bg-glass: rgba(25, 25, 25, 0.8);
+  --color-surface: #2c2c2c;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.16);
+
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-text-secondary: rgba(255, 255, 255, 0.6);
+  --color-text-muted: rgba(255, 255, 255, 0.35);
+
+  --color-accent: #4a9fe5;
+  --color-accent-hover: #3d8dd4;
+  --color-accent-glow: rgba(74, 159, 229, 0.2);
+
+  --color-success: #2dba9f;
+  --color-error: #e06c75;
+  --color-warning: #e5a534;
+
+  --color-btn-primary-bg: rgba(255, 255, 255, 0.9);
+  --color-btn-primary-bg-hover: #ffffff;
+  --color-btn-primary-text: #191919;
+  --color-hover-overlay: rgba(255, 255, 255, 0.06);
+
+  --shadow-md: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px, rgba(0, 0, 0, 0.3) 0px 3px 6px, rgba(0, 0, 0, 0.4) 0px 9px 24px;
+  --shadow-lg: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px, rgba(0, 0, 0, 0.3) 0px 5px 10px, rgba(0, 0, 0, 0.4) 0px 15px 40px;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-bg: #191919;
+    --color-bg-elevated: #202020;
+    --color-bg-panel: rgba(25, 25, 25, 0.95);
+    --color-bg-glass: rgba(25, 25, 25, 0.8);
+    --color-surface: #2c2c2c;
+    --color-border: rgba(255, 255, 255, 0.08);
+    --color-border-hover: rgba(255, 255, 255, 0.16);
+
+    --color-text: rgba(255, 255, 255, 0.9);
+    --color-text-secondary: rgba(255, 255, 255, 0.6);
+    --color-text-muted: rgba(255, 255, 255, 0.35);
+
+    --color-accent: #4a9fe5;
+    --color-accent-hover: #3d8dd4;
+    --color-accent-glow: rgba(74, 159, 229, 0.2);
+
+    --color-success: #2dba9f;
+    --color-error: #e06c75;
+    --color-warning: #e5a534;
+
+    --color-btn-primary-bg: rgba(255, 255, 255, 0.9);
+    --color-btn-primary-bg-hover: #ffffff;
+    --color-btn-primary-text: #191919;
+    --color-hover-overlay: rgba(255, 255, 255, 0.06);
+
+    --shadow-md: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px, rgba(0, 0, 0, 0.3) 0px 3px 6px, rgba(0, 0, 0, 0.4) 0px 9px 24px;
+    --shadow-lg: rgba(0, 0, 0, 0.2) 0px 0px 0px 1px, rgba(0, 0, 0, 0.3) 0px 5px 10px, rgba(0, 0, 0, 0.4) 0px 15px 40px;
+
+    color-scheme: dark;
+  }
+}
+
+/* --- Skip-to-content (keyboard accessibility) --- */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-md);
+  z-index: 999;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-md);
 }
 
 /* --- Reset & Base --- */
@@ -129,7 +221,7 @@ body {
 }
 
 .header-btn:hover {
-  background: rgba(55, 53, 47, 0.08);
+  background: var(--color-hover-overlay);
   border-color: transparent;
   color: var(--color-text);
 }
@@ -308,17 +400,86 @@ a.header-btn {
 /* --- Loading State --- */
 .loading-state {
   text-align: center;
-  padding: var(--space-2xl);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-accent);
-  border-radius: 50%;
-  margin: 0 auto var(--space-lg);
-  animation: spin 0.8s linear infinite;
+/* Skeleton loader — mimics the card shape */
+.skeleton-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  margin-bottom: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-line {
+  height: 14px;
+  background: linear-gradient(90deg,
+      var(--color-border) 25%,
+      var(--color-border-hover) 50%,
+      var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-tag {
+  width: 80px;
+  height: 10px;
+}
+
+.skeleton-title {
+  width: 85%;
+  height: 22px;
+  margin-top: 4px;
+}
+
+.skeleton-title-sm {
+  width: 55%;
+  height: 18px;
+}
+
+.skeleton-divider {
+  height: 4px;
+  width: 60px;
+  background: var(--color-border);
+  border-radius: 2px;
+  margin: 4px 0;
+}
+
+.skeleton-body {
+  width: 100%;
+}
+
+.skeleton-body-short {
+  width: 72%;
+}
+
+.skeleton-spacer {
+  height: 6px;
+}
+
+.skeleton-footer {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: 8px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @keyframes spin {
@@ -358,8 +519,8 @@ a.header-btn {
 }
 
 .btn-primary {
-  background: #2f3437;
-  color: #fff;
+  background: var(--color-btn-primary-bg);
+  color: var(--color-btn-primary-text);
   flex: 1;
   justify-content: center;
   box-shadow: none;
@@ -368,11 +529,11 @@ a.header-btn {
 .btn-primary:hover {
   transform: none;
   box-shadow: none;
-  background: #1a1b1c;
+  background: var(--color-btn-primary-bg-hover);
 }
 
 .btn-primary:active {
-  transform: translateY(0);
+  transform: scale(0.98);
 }
 
 .btn-primary:disabled {
@@ -389,9 +550,13 @@ a.header-btn {
 }
 
 .btn-ghost:hover {
-  background: rgba(55, 53, 47, 0.08);
+  background: var(--color-hover-overlay);
   color: var(--color-text);
   border-color: transparent;
+}
+
+.btn-ghost:active {
+  transform: scale(0.97);
 }
 
 .btn-action {
@@ -406,6 +571,10 @@ a.header-btn {
   background: var(--color-surface);
   color: var(--color-text);
   border-color: var(--color-border-hover);
+}
+
+.btn-action:active {
+  transform: scale(0.97);
 }
 
 .btn-sm {
@@ -853,7 +1022,7 @@ select optgroup {
 
   .mobile-tab.active {
     color: var(--color-text);
-    background: rgba(55, 53, 47, 0.05);
+    background: var(--color-hover-overlay);
   }
 
   .mobile-tab.active::after {

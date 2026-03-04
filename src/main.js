@@ -5,6 +5,8 @@
 import { generateCard, testConnection, fetchModels } from './api.js';
 import { copyToClipboard } from './export.js';
 import { CARD_SYSTEM_PROMPT } from './prompts.js';
+import { initTheme } from './theme.js';
+import { getHistory, addHistory, clearHistory, deleteHistoryItem } from './history.js';
 
 // ============================================
 // State
@@ -65,6 +67,8 @@ const els = {
   panelInput: document.querySelector('.panel-input'),
   panelPreview: document.querySelector('.panel-preview'),
 
+  // Theme
+  btnTheme: $('#btn-theme'),
 };
 
 // ============================================
@@ -82,40 +86,6 @@ function saveSettings(settings) {
   if (settings.apiKey) localStorage.setItem('flashsnap_api_key', settings.apiKey);
   if (settings.model) localStorage.setItem('flashsnap_model', settings.model);
   if (settings.baseUrl !== undefined) localStorage.setItem('flashsnap_base_url', settings.baseUrl);
-}
-
-function getHistory() {
-  try {
-    return JSON.parse(localStorage.getItem('flashsnap_history') || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function addHistory(input, html) {
-  const history = getHistory();
-  history.unshift({
-    id: Date.now(),
-    input: input.slice(0, 100),
-    html,
-    time: new Date().toISOString(),
-  });
-  // Keep only last 20
-  if (history.length > 20) history.length = 20;
-  try {
-    localStorage.setItem('flashsnap_history', JSON.stringify(history));
-  } catch (e) {
-    // localStorage quota exceeded — drop oldest entries and retry
-    console.warn('[FlashSnap] localStorage quota exceeded, trimming history');
-    history.length = Math.max(1, Math.floor(history.length / 2));
-    try {
-      localStorage.setItem('flashsnap_history', JSON.stringify(history));
-    } catch { /* give up silently */ }
-  }
-}
-
-function clearHistory() {
-  localStorage.removeItem('flashsnap_history');
 }
 
 // ============================================
@@ -311,11 +281,28 @@ function renderToIframe(html) {
     }
   };
 
-  // Wait for content + fonts, then resize
+  // Wait for content + fonts, then resize.
+  // Use ResizeObserver for precise content-driven resizing (replaces
+  // the old triple-setTimeout hack).
   iframe.onload = resizeIframe;
-  setTimeout(resizeIframe, 300);
-  setTimeout(resizeIframe, 1000);
-  setTimeout(resizeIframe, 2500);
+  setTimeout(resizeIframe, 300); // fallback for slow content
+
+  try {
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    if (iframeDoc?.body) {
+      let disconnectTimer = null;
+      const ro = new ResizeObserver(() => {
+        resizeIframe();
+        // Auto-disconnect once content stabilizes (2s of no further changes)
+        clearTimeout(disconnectTimer);
+        disconnectTimer = setTimeout(() => ro.disconnect(), 2000);
+      });
+      ro.observe(iframeDoc.body);
+    }
+  } catch (e) {
+    // Cross-origin or ResizeObserver not available — fall back to timeout
+    setTimeout(resizeIframe, 1000);
+  }
 }
 
 // ============================================
@@ -675,9 +662,7 @@ function renderHistoryList() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = parseInt(btn.dataset.deleteId);
-      const history = getHistory();
-      const filtered = history.filter(h => h.id !== id);
-      localStorage.setItem('flashsnap_history', JSON.stringify(filtered));
+      deleteHistoryItem(id);
       renderHistoryList();
       showToast('已删除');
     });
@@ -832,6 +817,9 @@ function init() {
   if (!isMobile()) {
     els.inputText.focus();
   }
+
+  // --- Theme ---
+  initTheme(els.btnTheme);
 }
 
 // Boot

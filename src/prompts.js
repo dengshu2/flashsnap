@@ -101,6 +101,11 @@ export const CARD_SYSTEM_PROMPT = `# 高级信息卡视觉设计规范
   width: 100px;
   margin: 10px 0;
 }
+
+/* 标签/徽章：禁止换行，防止导出图片时文字被挤压断行 */
+.tag, .label, .badge {
+  white-space: nowrap;
+}
 \`\`\`
 
 ---

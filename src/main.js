@@ -386,15 +386,25 @@ async function handleGenerate() {
 // ============================================
 async function handleCopy() {
   if (!state.currentHTML) return;
+  if (els.btnCopy.disabled) return;
 
+  const label = els.btnCopy.querySelector('.btn-label');
+  els.btnCopy.disabled = true;
   try {
-    els.btnCopy.querySelector('span:last-child').textContent = '复制中...';
+    label.textContent = '复制中...';
     await copyToClipboard(els.previewFrame);
-    els.btnCopy.querySelector('span:last-child').textContent = '复制';
-    showToast('已复制到剪贴板！');
+
+    // 短暂显示成功状态
+    label.textContent = '已复制 ✓';
+    showToast('已复制到剪贴板');
+    setTimeout(() => {
+      label.textContent = '复制';
+    }, 1500);
   } catch (error) {
-    els.btnCopy.querySelector('span:last-child').textContent = '复制';
+    label.textContent = '复制';
     showToast(`复制失败：${error.message}`, 'error');
+  } finally {
+    els.btnCopy.disabled = false;
   }
 }
 

@@ -111,6 +111,12 @@ function collectInlineStyles(iframe) {
 const CARD_DESIGN_WIDTH = 900;
 
 /**
+ * 截图操作超时时间（毫秒）
+ * 防止 html-to-image 在某些 CSS 场景下 hang 住导致页面卡死
+ */
+const CAPTURE_TIMEOUT = 15000;
+
+/**
  * 获取 iframe 中的卡片根元素
  * 优先查找 .card 类元素，否则取 body 的第一个子元素
  */
@@ -134,6 +140,17 @@ function getCardElement(iframe) {
  * @returns {Promise<string>} PNG data URL
  */
 async function captureToDataUrl(iframe) {
+    // 超时保障：避免 toPng 内部 hang 导致页面永久卡住
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('截图超时，请重试')), CAPTURE_TIMEOUT)
+    );
+    return Promise.race([doCapture(iframe), timeoutPromise]);
+}
+
+/**
+ * 实际截图逻辑（被 captureToDataUrl 包裹超时保障）
+ */
+async function doCapture(iframe) {
     const cardEl = getCardElement(iframe);
 
     // 1. 等待 iframe 中字体加载完成
@@ -143,8 +160,8 @@ async function captureToDataUrl(iframe) {
         // fonts API 不可用，继续
     }
 
-    // 等待字体渲染
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // 等待字体渲染（fonts.ready 后只需短暂等待即可）
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // 2. 预先嵌入字体（核心修复）
     const fontCSS = await getEmbeddedFontCSS(iframe);
@@ -155,9 +172,16 @@ async function captureToDataUrl(iframe) {
     // 合并：内联样式 + 嵌入字体
     const combinedCSS = inlineCSS + '\n' + fontCSS;
 
-    // 4. Create an off-screen clone iframe for capture.
-    //    This avoids ANY visual change to the visible iframe —
-    //    no transform reset, no opacity flash, no layout shift.
+    // 4. 读取原始卡片的实际渲染宽度（可能 > 900px）
+    const originalCardEl = getCardElement(iframe);
+    const actualCardWidth = Math.max(
+        originalCardEl.scrollWidth,
+        originalCardEl.offsetWidth,
+        CARD_DESIGN_WIDTH,
+    );
+
+    // 5. Create an off-screen clone iframe for capture.
+    //    使用卡片的实际宽度而非固定 900px，避免布局挤压。
     const srcDoc = iframe.contentDocument || iframe.contentWindow.document;
     const fullHTML = '<!DOCTYPE html>\n' + srcDoc.documentElement.outerHTML;
 
@@ -165,7 +189,7 @@ async function captureToDataUrl(iframe) {
     clone.setAttribute('sandbox', 'allow-same-origin');
     clone.style.cssText =
         'position:fixed;left:-10000px;top:0;' +
-        'width:' + CARD_DESIGN_WIDTH + 'px;height:auto;' +
+        'width:' + actualCardWidth + 'px;height:auto;' +
         'border:none;visibility:hidden;pointer-events:none;';
     document.body.appendChild(clone);
 
@@ -185,24 +209,32 @@ async function captureToDataUrl(iframe) {
             await clone.contentWindow.document.fonts.ready;
         } catch (e) { /* fonts API not available */ }
 
-        // Small extra wait for rendering to settle
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // 600ms onload fallback 已足够等待渲染稳定，不再额外等待
 
-        // 5. Capture from clone — already at correct width, no transform needed
+        // 6. 从 clone 中读取实际渲染尺寸，而非硬编码
+        //    这样 html-to-image 克隆 DOM 后的 SVG foreignObject
+        //    会使用与浏览器预览一致的宽度，避免 flex 子元素被挤压换行。
         const cloneCardEl = getCardElement(clone);
+        const cardWidth = Math.max(
+            cloneCardEl.scrollWidth,
+            cloneCardEl.offsetWidth,
+            CARD_DESIGN_WIDTH,
+        );
         const cardHeight = cloneCardEl.scrollHeight;
 
         const dataUrl = await toPng(cloneCardEl, {
             quality: 1.0,
             pixelRatio: 2,
             backgroundColor: null,
-            width: CARD_DESIGN_WIDTH,
+            width: cardWidth,
             height: cardHeight,
             fontEmbedCSS: combinedCSS,
             style: {
                 margin: '0',
                 transform: 'none',
-                width: CARD_DESIGN_WIDTH + 'px',
+                // 不再强制覆盖 width — 保持卡片 CSS 自身定义的宽度和 box-sizing
+                // 之前 width: 900px 的强制覆盖会干扰 box-sizing: border-box，
+                // 导致内容区变窄，flex 子元素被挤压换行
             },
             filter: (node) => {
                 return node.tagName !== 'SCRIPT';
@@ -245,7 +277,8 @@ async function captureToBlob(iframe) {
  */
 export async function copyToClipboard(iframe) {
     try {
-        // 同步调用 clipboard.write()，传入 Promise 以保持用户手势上下文
+        // 首选：将 Promise 直接传入 ClipboardItem，保持用户手势上下文
+        // Chrome 76+、Edge 79+、Firefox 127+ 均支持
         await navigator.clipboard.write([
             new ClipboardItem({
                 'image/png': captureToBlob(iframe),
@@ -254,6 +287,24 @@ export async function copyToClipboard(iframe) {
 
         return true;
     } catch (error) {
+        // Safari 旧版本不支持 ClipboardItem(Promise)，会抛出 TypeError
+        // 降级方案：先 await blob，再同步写入（手势可能已过期，但值得一试）
+        if (error instanceof TypeError) {
+            try {
+                const blob = await captureToBlob(iframe);
+                await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob }),
+                ]);
+                return true;
+            } catch (fallbackError) {
+                console.error('Fallback copy failed:', fallbackError);
+                if (fallbackError.name === 'NotAllowedError') {
+                    throw new Error('剪贴板权限被拒绝。请确保在 HTTPS 或 localhost 环境下使用。');
+                }
+                throw fallbackError;
+            }
+        }
+
         console.error('Copy to clipboard failed:', error);
 
         if (error.name === 'NotAllowedError') {

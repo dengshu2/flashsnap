@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+
+ARG VITE_UMAMI_WEBSITE_ID
 RUN npm run build
 
 # ---- Production Stage ----

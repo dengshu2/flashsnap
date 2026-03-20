@@ -3,7 +3,7 @@
  */
 
 import { generateCard, testConnection, fetchModels } from './api.js';
-import { copyToClipboard } from './export.js';
+import { copyToClipboard, invalidateCaptureCache, warmCaptureCache } from './export.js';
 import { CARD_SYSTEM_PROMPT } from './prompts.js';
 import { initTheme } from './theme.js';
 import { getHistory, addHistory, clearHistory, deleteHistoryItem } from './history.js';
@@ -112,6 +112,10 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+function syncCharCount() {
+  els.charCount.textContent = `${els.inputText.value.length} 字`;
+}
+
 // ============================================
 // UI State Management
 // ============================================
@@ -207,6 +211,7 @@ function initMobileTabs() {
 function renderToIframe(html) {
   const iframe = els.previewFrame;
   const container = els.previewContainer;
+  invalidateCaptureCache(iframe);
 
   // Hide iframe visually while setting up layout to prevent flash.
   // opacity:0 keeps the element in flow so dimensions can be measured.
@@ -274,6 +279,8 @@ function renderToIframe(html) {
             forceScrollTop();
             setTimeout(forceScrollTop, 50);
           }
+
+          warmCaptureCache(iframe);
         }
       }
     } catch (e) {
@@ -354,7 +361,13 @@ async function handleGenerate() {
       renderToIframe(html);
       showState('preview');
       setGenerating(false);
-      addHistory(input, html);
+      const historyResult = addHistory(input, html);
+      if (historyResult?.saved === false) {
+        const message = historyResult.reason === 'too_large'
+          ? '卡片过大，未写入历史记录'
+          : '历史记录空间不足，未写入本次卡片';
+        showToast(message, 'info');
+      }
       // On mobile, switch to preview tab (scroll-to-top is handled inside switchTab)
       if (isMobile()) {
         switchTab('preview');
@@ -659,6 +672,9 @@ function renderHistoryList() {
       const entry = history.find(h => h.id === id);
       if (entry) {
         state.currentHTML = entry.html;
+        state.lastInput = entry.input;
+        els.inputText.value = entry.input;
+        syncCharCount();
         renderToIframe(entry.html);
         showState('preview');
         hideHistoryModal();
@@ -723,14 +739,24 @@ function forceScrollTop() {
   if (document.documentElement) document.documentElement.scrollTop = 0;
 }
 
+function initAnalytics() {
+  const websiteId = import.meta.env.VITE_UMAMI_WEBSITE_ID;
+  if (!websiteId) return;
+
+  const script = document.createElement('script');
+  script.defer = true;
+  script.src = 'https://umami.dengshu.ovh/script.js';
+  script.dataset.websiteId = websiteId;
+  document.head.appendChild(script);
+}
+
 // ============================================
 // Event Bindings
 // ============================================
 function init() {
   // Character count
   els.inputText.addEventListener('input', () => {
-    const len = els.inputText.value.length;
-    els.charCount.textContent = `${len} 字`;
+    syncCharCount();
   });
 
   // Generate
@@ -830,6 +856,7 @@ function init() {
 
   // --- Theme ---
   initTheme(els.btnTheme);
+  initAnalytics();
 }
 
 // Boot

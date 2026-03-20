@@ -6,7 +6,7 @@
  * 避免 html-to-image 克隆 DOM 时丢失外部字体。
  */
 
-import { toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 
 /* ------------------------------------------------
  * 字体内联缓存 — 同一组字体只需抓取一次
@@ -96,6 +96,7 @@ const CARD_DESIGN_WIDTH = 900;
  * 防止 html-to-image 在某些 CSS 场景下 hang 住导致页面卡死
  */
 const CAPTURE_TIMEOUT = 15000;
+const captureCache = new WeakMap();
 
 /**
  * 获取 iframe 中的卡片根元素
@@ -187,18 +188,23 @@ async function waitForRenderableState(iframe) {
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<string>} PNG data URL
  */
-async function captureToDataUrl(iframe) {
-    // 超时保障：避免 toPng 内部 hang 导致页面永久卡住
-    const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('截图超时，请重试')), CAPTURE_TIMEOUT)
-    );
-    return Promise.race([doCapture(iframe), timeoutPromise]);
+async function captureToBlob(iframe) {
+    let timeoutId = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('截图超时，请重试')), CAPTURE_TIMEOUT);
+    });
+
+    try {
+        return await Promise.race([doCaptureToBlob(iframe), timeoutPromise]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 /**
- * 实际截图逻辑（被 captureToDataUrl 包裹超时保障）
+ * 实际截图逻辑（被 captureToBlob 包裹超时保障）
  */
-async function doCapture(iframe) {
+async function doCaptureToBlob(iframe) {
     await waitForRenderableState(iframe);
 
     const cardEl = getCardElement(iframe);
@@ -216,7 +222,7 @@ async function doCapture(iframe) {
     // 仅注入字体嵌入 CSS。普通样式由 html-to-image 从当前 DOM 的计算样式复制。
     const fontCSS = await getEmbeddedFontCSS(iframe);
 
-    return toPng(cardEl, {
+    const blob = await toBlob(cardEl, {
         quality: 1.0,
         pixelRatio: 2,
         backgroundColor: null,
@@ -231,17 +237,39 @@ async function doCapture(iframe) {
             return node.tagName !== 'SCRIPT';
         },
     });
+
+    if (!blob) {
+        throw new Error('截图失败，请重试');
+    }
+
+    return blob;
 }
 
-/**
- * 将 iframe 中的内容转换为 PNG Blob
- * @param {HTMLIFrameElement} iframe
- * @returns {Promise<Blob>}
- */
-async function captureToBlob(iframe) {
-    const dataUrl = await captureToDataUrl(iframe);
-    const response = await fetch(dataUrl);
-    return response.blob();
+function getOrCreateCapturePromise(iframe) {
+    const cached = captureCache.get(iframe);
+    if (cached) {
+        return cached;
+    }
+
+    const promise = captureToBlob(iframe).catch((error) => {
+        if (captureCache.get(iframe) === promise) {
+            captureCache.delete(iframe);
+        }
+        throw error;
+    });
+
+    captureCache.set(iframe, promise);
+    return promise;
+}
+
+export function invalidateCaptureCache(iframe) {
+    captureCache.delete(iframe);
+}
+
+export function warmCaptureCache(iframe) {
+    getOrCreateCapturePromise(iframe).catch(() => {
+        // 预热失败不打断主流程；用户点击复制时会拿到真实错误。
+    });
 }
 
 /**
@@ -261,12 +289,14 @@ async function captureToBlob(iframe) {
  * @returns {Promise<boolean>}
  */
 export async function copyToClipboard(iframe) {
+    const blobPromise = getOrCreateCapturePromise(iframe);
+
     try {
         // 首选：将 Promise 直接传入 ClipboardItem，保持用户手势上下文
         // Chrome 76+、Edge 79+、Firefox 127+ 均支持
         await navigator.clipboard.write([
             new ClipboardItem({
-                'image/png': captureToBlob(iframe),
+                'image/png': blobPromise,
             }),
         ]);
 
@@ -276,7 +306,7 @@ export async function copyToClipboard(iframe) {
         // 降级方案：先 await blob，再同步写入（手势可能已过期，但值得一试）
         if (error instanceof TypeError) {
             try {
-                const blob = await captureToBlob(iframe);
+                const blob = await blobPromise;
                 await navigator.clipboard.write([
                     new ClipboardItem({ 'image/png': blob }),
                 ]);

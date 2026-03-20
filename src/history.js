@@ -17,28 +17,36 @@ export function getHistory() {
 
 export function addHistory(input, html) {
     const history = getHistory();
-
-    // Truncate oversized HTML to prevent localStorage quota issues
-    const safeHTML = html.length > MAX_HTML_SIZE
-        ? html.slice(0, MAX_HTML_SIZE) + '\n<!-- truncated -->'
-        : html;
+    if (html.length > MAX_HTML_SIZE) {
+        return {
+            saved: false,
+            reason: 'too_large',
+        };
+    }
 
     history.unshift({
         id: Date.now(),
-        input: input.slice(0, 100),
-        html: safeHTML,
+        input,
+        html,
         time: new Date().toISOString(),
     });
     if (history.length > MAX_HISTORY_COUNT) history.length = MAX_HISTORY_COUNT;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        return { saved: true };
     } catch (e) {
         // localStorage quota exceeded — drop oldest entries and retry
         console.warn('[FlashSnap] localStorage quota exceeded, trimming history');
         history.length = Math.max(1, Math.floor(history.length / 2));
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-        } catch { /* give up silently */ }
+            return { saved: true };
+        } catch {
+            return {
+                saved: false,
+                reason: 'quota',
+            };
+        }
     }
 }
 

@@ -5,6 +5,8 @@
 
 import { GoogleGenAI } from '@google/genai';
 
+const MAX_HTML_OUTPUT_TOKENS = 16384;
+
 let aiInstance = null;
 let aiInstanceKey = null;  // 缓存 key，用于判断是否需要重新创建
 
@@ -149,31 +151,87 @@ export async function fetchModels(apiKey, baseUrl) {
  * 4. HTML 前后夹带分析/自检文字
  */
 function extractHTML(text) {
-    let raw = text.trim();
+    const raw = text.trim();
 
-    // 1. Try to find a ```html ... ``` or ``` ... ``` code block WITHIN the text
-    const codeBlockInText = /```(?:html)?\s*\n([\s\S]*?)\n\s*```/;
-    const blockMatch = raw.match(codeBlockInText);
-    if (blockMatch) {
-        return blockMatch[1].trim();
+    // 1. 优先提取 markdown 代码块中的 HTML
+    const codeBlockMatches = [...raw.matchAll(/```(?:html)?\s*\n?([\s\S]*?)\n?```/gi)];
+    if (codeBlockMatches.length > 0) {
+        const bestMatch = codeBlockMatches
+            .map(match => match[1].trim())
+            .find(candidate => /<(!DOCTYPE|html|body|style|div|section|article)\b/i.test(candidate));
+        if (bestMatch) return bestMatch;
     }
 
-    // 2. Find the HTML boundaries — strip leading and trailing non-HTML text
-    const htmlStart = raw.search(/<(!DOCTYPE|html|link|head|style|div)/i);
-    if (htmlStart >= 0) {
-        let html = raw.slice(htmlStart);
-
-        // Strip trailing text after the last closing </html> tag
+    // 2. 优先截取完整 HTML 文档
+    const documentStart = raw.search(/<!DOCTYPE|<html\b/i);
+    if (documentStart >= 0) {
+        let html = raw.slice(documentStart);
         const htmlEndMatch = html.match(/([\s\S]*<\/html\s*>)/i);
         if (htmlEndMatch) {
             html = htmlEndMatch[1];
         }
-
         return html.trim();
     }
 
-    // 3. Fallback: return the whole text
+    // 3. 若模型只返回片段，要求标签出现在新行开头，避免把解释文字中的 "<div>" 误识别为 HTML
+    const fragmentMatch = raw.match(/(?:^|\n)\s*(<(?:link|style|body|main|section|article|div)\b[\s\S]*)/i);
+    if (fragmentMatch) {
+        return fragmentMatch[1].trim();
+    }
+
     return raw;
+}
+
+function getFinishReason(response) {
+    return response?.candidates?.[0]?.finishReason || '';
+}
+
+function getMeaningfulTextLength(root) {
+    if (!root) return 0;
+
+    const doc = root.ownerDocument;
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            const text = node.textContent?.trim();
+            if (!text) return NodeFilter.FILTER_REJECT;
+
+            const parentTag = node.parentElement?.tagName;
+            if (parentTag && ['STYLE', 'SCRIPT', 'NOSCRIPT', 'TITLE'].includes(parentTag)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+
+            return NodeFilter.FILTER_ACCEPT;
+        },
+    });
+
+    let total = 0;
+    while (walker.nextNode()) {
+        total += walker.currentNode.textContent.trim().length;
+    }
+    return total;
+}
+
+function validateGeneratedHTML(html) {
+    if (!html || html.length < 120) {
+        throw new Error('模型返回的 HTML 过短，疑似未按要求输出卡片。');
+    }
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const body = doc.body;
+    const card = body?.querySelector('.card') || body?.firstElementChild;
+
+    if (!card) {
+        throw new Error('模型返回的 HTML 缺少卡片根节点，无法渲染。');
+    }
+
+    const textLength = getMeaningfulTextLength(card);
+    const richContentCount = card.querySelectorAll('img, svg, canvas, picture, table, ul, ol, blockquote').length;
+
+    if (textLength < 12 && richContentCount === 0) {
+        throw new Error('模型返回的 HTML 没有实际内容，疑似被截断或输出格式跑偏。');
+    }
+
+    return html;
 }
 
 /**
@@ -198,20 +256,30 @@ export async function generateCard({ apiKey, model, userContent, systemPrompt, b
             contents: userContent,
             config: {
                 systemInstruction: systemPrompt,
-                maxOutputTokens: 8192,
+                maxOutputTokens: MAX_HTML_OUTPUT_TOKENS,
             },
         });
 
         let fullText = '';
+        let lastChunk = null;
 
         for await (const chunk of response) {
+            lastChunk = chunk;
             if (chunk.text) {
                 fullText += chunk.text;
                 onChunk?.(fullText);
             }
         }
 
-        const html = extractHTML(fullText);
+        const finishReason = getFinishReason(lastChunk);
+        if (finishReason && finishReason !== 'STOP') {
+            if (finishReason === 'MAX_TOKENS') {
+                throw new Error('模型输出被截断：已达到输出长度上限。请重试，或切换到更稳定的模型。');
+            }
+            throw new Error(`模型输出未正常完成：${finishReason}`);
+        }
+
+        const html = validateGeneratedHTML(extractHTML(fullText));
         onComplete?.(html);
     } catch (error) {
         console.error('Gemini API Error:', error);
@@ -230,9 +298,17 @@ export async function generateCardSync({ apiKey, model, userContent, systemPromp
         contents: userContent,
         config: {
             systemInstruction: systemPrompt,
-            maxOutputTokens: 8192,
+            maxOutputTokens: MAX_HTML_OUTPUT_TOKENS,
         },
     });
 
-    return extractHTML(response.text);
+    const finishReason = getFinishReason(response);
+    if (finishReason && finishReason !== 'STOP') {
+        if (finishReason === 'MAX_TOKENS') {
+            throw new Error('模型输出被截断：已达到输出长度上限。请重试，或切换到更稳定的模型。');
+        }
+        throw new Error(`模型输出未正常完成：${finishReason}`);
+    }
+
+    return validateGeneratedHTML(extractHTML(response.text));
 }

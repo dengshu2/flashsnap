@@ -275,6 +275,18 @@ a.header-btn {
 .panel-input {
   border-right: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
+  position: relative;
+  z-index: 2;
+}
+
+.panel-input .panel-header {
+  position: relative;
+  z-index: 3;
+}
+
+.header-right {
+  position: relative;
+  z-index: 4;
 }
 
 .char-count {
@@ -370,6 +382,7 @@ a.header-btn {
   background: transparent;
   border-radius: var(--radius-md);
   flex-shrink: 0;
+  pointer-events: none;
 }
 
 /* --- Empty State --- */

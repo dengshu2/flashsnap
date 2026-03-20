@@ -87,25 +87,6 @@ async function getEmbeddedFontCSS(iframe) {
 }
 
 /**
- * 收集 iframe 中 <style> 标签内的所有 CSS 规则，
- * 确保 html-to-image 克隆节点时不丢失样式。
- *
- * @param {HTMLIFrameElement} iframe
- * @returns {string}
- */
-function collectInlineStyles(iframe) {
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return '';
-
-    let css = '';
-    const styleTags = doc.querySelectorAll('style');
-    for (const tag of styleTags) {
-        css += tag.textContent + '\n';
-    }
-    return css;
-}
-
-/**
  * 卡片设计固定宽度（与 prompts.js 中的规范一致）
  */
 const CARD_DESIGN_WIDTH = 900;
@@ -130,11 +111,78 @@ function getCardElement(iframe) {
         || iframeDoc.body;
 }
 
+function nextAnimationFrame(win) {
+    return new Promise((resolve) => {
+        const raf = win?.requestAnimationFrame?.bind(win) || requestAnimationFrame;
+        raf(() => resolve());
+    });
+}
+
+async function waitForImageReady(img) {
+    if (!img || img.tagName !== 'IMG') return;
+
+    if (!img.complete) {
+        await new Promise((resolve) => {
+            const done = () => {
+                img.removeEventListener('load', done);
+                img.removeEventListener('error', done);
+                resolve();
+            };
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+        });
+    }
+
+    if (typeof img.decode === 'function') {
+        try {
+            await img.decode();
+        } catch (e) {
+            // decode() 在图片已损坏或浏览器实现不完整时会 reject，忽略即可
+        }
+    }
+}
+
+/**
+ * 等待卡片中影响渲染结果的异步资源稳定：
+ * 1. iframe 文档 ready
+ * 2. Web Fonts
+ * 3. <img> 加载与 decode
+ * 4. 两帧渲染，确保 layout 已刷新
+ */
+async function waitForRenderableState(iframe) {
+    const win = iframe.contentWindow;
+    const doc = iframe.contentDocument || win?.document;
+    if (!doc || !win) {
+        throw new Error('无法获取预览文档');
+    }
+
+    if (doc.readyState !== 'complete') {
+        await new Promise((resolve) => {
+            const done = () => resolve();
+            win.addEventListener('load', done, { once: true });
+            setTimeout(done, 1000);
+        });
+    }
+
+    try {
+        await doc.fonts.ready;
+    } catch (e) {
+        // fonts API 不可用，继续
+    }
+
+    const cardEl = getCardElement(iframe);
+    const images = Array.from(cardEl.querySelectorAll('img'));
+    await Promise.all(images.map(waitForImageReady));
+
+    await nextAnimationFrame(win);
+    await nextAnimationFrame(win);
+}
+
 /**
  * 将 iframe 中的卡片内容转换为 data URL
  *
- * 关键修复：导出前重置 iframe 的 scale() 变换，并使用固定 900px 宽度，
- * 确保导出图片的布局与预览完全一致。
+ * 关键修复：直接截图预览中已渲染完成的卡片 DOM，
+ * 避免重建离屏文档后和用户实际看到的内容发生偏差。
  *
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<string>} PNG data URL
@@ -151,101 +199,38 @@ async function captureToDataUrl(iframe) {
  * 实际截图逻辑（被 captureToDataUrl 包裹超时保障）
  */
 async function doCapture(iframe) {
+    await waitForRenderableState(iframe);
+
     const cardEl = getCardElement(iframe);
-
-    // 1. 等待 iframe 中字体加载完成
-    try {
-        await iframe.contentWindow.document.fonts.ready;
-    } catch (e) {
-        // fonts API 不可用，继续
-    }
-
-    // 等待字体渲染（fonts.ready 后只需短暂等待即可）
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    // 2. 预先嵌入字体（核心修复）
-    const fontCSS = await getEmbeddedFontCSS(iframe);
-
-    // 3. 收集 iframe 中的内联样式（包含卡片布局 CSS）
-    const inlineCSS = collectInlineStyles(iframe);
-
-    // 合并：内联样式 + 嵌入字体
-    const combinedCSS = inlineCSS + '\n' + fontCSS;
-
-    // 4. 读取原始卡片的实际渲染宽度（可能 > 900px）
-    const originalCardEl = getCardElement(iframe);
-    const actualCardWidth = Math.max(
-        originalCardEl.scrollWidth,
-        originalCardEl.offsetWidth,
+    const cardWidth = Math.max(
+        cardEl.scrollWidth,
+        cardEl.offsetWidth,
         CARD_DESIGN_WIDTH,
     );
+    const cardHeight = Math.max(
+        cardEl.scrollHeight,
+        cardEl.offsetHeight,
+        1,
+    );
 
-    // 5. Create an off-screen clone iframe for capture.
-    //    使用卡片的实际宽度而非固定 900px，避免布局挤压。
-    const srcDoc = iframe.contentDocument || iframe.contentWindow.document;
-    const fullHTML = '<!DOCTYPE html>\n' + srcDoc.documentElement.outerHTML;
+    // 仅注入字体嵌入 CSS。普通样式由 html-to-image 从当前 DOM 的计算样式复制。
+    const fontCSS = await getEmbeddedFontCSS(iframe);
 
-    const clone = document.createElement('iframe');
-    clone.setAttribute('sandbox', 'allow-same-origin');
-    clone.style.cssText =
-        'position:fixed;left:-10000px;top:0;' +
-        'width:' + actualCardWidth + 'px;height:auto;' +
-        'border:none;visibility:hidden;pointer-events:none;';
-    document.body.appendChild(clone);
-
-    try {
-        const cloneDoc = clone.contentDocument || clone.contentWindow.document;
-        cloneDoc.open();
-        cloneDoc.write(fullHTML);
-        cloneDoc.close();
-
-        // Wait for clone content + fonts to load
-        await new Promise(resolve => {
-            clone.onload = resolve;
-            setTimeout(resolve, 600); // fallback
-        });
-
-        try {
-            await clone.contentWindow.document.fonts.ready;
-        } catch (e) { /* fonts API not available */ }
-
-        // 600ms onload fallback 已足够等待渲染稳定，不再额外等待
-
-        // 6. 从 clone 中读取实际渲染尺寸，而非硬编码
-        //    这样 html-to-image 克隆 DOM 后的 SVG foreignObject
-        //    会使用与浏览器预览一致的宽度，避免 flex 子元素被挤压换行。
-        const cloneCardEl = getCardElement(clone);
-        const cardWidth = Math.max(
-            cloneCardEl.scrollWidth,
-            cloneCardEl.offsetWidth,
-            CARD_DESIGN_WIDTH,
-        );
-        const cardHeight = cloneCardEl.scrollHeight;
-
-        const dataUrl = await toPng(cloneCardEl, {
-            quality: 1.0,
-            pixelRatio: 2,
-            backgroundColor: null,
-            width: cardWidth,
-            height: cardHeight,
-            fontEmbedCSS: combinedCSS,
-            style: {
-                margin: '0',
-                transform: 'none',
-                // 不再强制覆盖 width — 保持卡片 CSS 自身定义的宽度和 box-sizing
-                // 之前 width: 900px 的强制覆盖会干扰 box-sizing: border-box，
-                // 导致内容区变窄，flex 子元素被挤压换行
-            },
-            filter: (node) => {
-                return node.tagName !== 'SCRIPT';
-            },
-        });
-
-        return dataUrl;
-    } finally {
-        // Always clean up the clone
-        clone.remove();
-    }
+    return toPng(cardEl, {
+        quality: 1.0,
+        pixelRatio: 2,
+        backgroundColor: null,
+        width: cardWidth,
+        height: cardHeight,
+        fontEmbedCSS: fontCSS || undefined,
+        style: {
+            margin: '0',
+            transform: 'none',
+        },
+        filter: (node) => {
+            return node.tagName !== 'SCRIPT';
+        },
+    });
 }
 
 /**

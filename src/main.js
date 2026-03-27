@@ -231,6 +231,27 @@ function renderToIframe(html) {
   doc.write(html);
   doc.close();
 
+  // Inject a reset style to prevent body/html background from leaking
+  // below the card element. AI-generated HTML often sets a dark body
+  // background while the .card has a different color, causing a
+  // "stretching background" effect when the iframe is taller than the card.
+  try {
+    const resetStyle = doc.createElement('style');
+    resetStyle.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+      }
+    `;
+    (doc.head || doc.documentElement).appendChild(resetStyle);
+  } catch (e) {
+    // Cross-origin, ignore
+  }
+
   // Auto-resize iframe to fit content, then scale to fit container
   let revealed = false;
   const resizeIframe = () => {
@@ -245,10 +266,14 @@ function renderToIframe(html) {
         // Set iframe to card's natural size
         iframe.style.width = cardWidth + 'px';
 
-        const height = Math.max(
-          body.scrollHeight, body.offsetHeight,
-          htmlEl.clientHeight, htmlEl.scrollHeight, htmlEl.offsetHeight
-        );
+        // Measure height from the card element directly, NOT from body/html.
+        // body/html can be much taller than the actual card content due to
+        // default margins, AI-generated CSS on body, etc. — causing the
+        // body background to leak below the card ("infinite stretch" bug).
+        const cardHeight = cardEl
+          ? Math.max(cardEl.scrollHeight, cardEl.offsetHeight)
+          : Math.max(body.scrollHeight, body.offsetHeight);
+        const height = Math.max(cardHeight, 1);
         iframe.style.height = height + 'px';
 
         // Scale down to fit the preview container if needed

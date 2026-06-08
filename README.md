@@ -50,7 +50,7 @@ npm run build
 npm run build
 
 # 使用 Nginx 托管 dist/ 目录
-# 配合 Nginx Proxy Manager + Cloudflare 使用
+# 配合 Caddy + Cloudflare 使用
 ```
 
 ## 📄 License

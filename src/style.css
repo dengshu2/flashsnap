@@ -385,6 +385,47 @@ a.header-btn {
   pointer-events: none;
 }
 
+/* --- Streaming Badge --- */
+.stream-badge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  z-index: 5;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: badgePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
 /* --- Empty State --- */
 .empty-state {
   text-align: center;
@@ -1042,22 +1083,6 @@ select optgroup {
     display: none;
   }
 
-  /* Notification dot for preview tab when content is available */
-  .mobile-tab.has-content::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    right: calc(50% - 30px);
-    width: 6px;
-    height: 6px;
-    background: var(--color-text);
-    border-radius: 50%;
-  }
-
-  .mobile-tab.active.has-content::before {
-    display: none;
-  }
-
   /* Touch targets: enlarge */
   .header-btn {
     width: 40px;
@@ -1252,10 +1277,6 @@ select optgroup {
 
 /* Small phones (< 360px) */
 @media (max-width: 360px) {
-  .app-header {
-    padding: var(--space-xs) var(--space-sm);
-  }
-
   .logo h1 {
     font-size: 15px;
   }

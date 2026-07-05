@@ -6,8 +6,6 @@
  * 避免 html-to-image 克隆 DOM 时丢失外部字体。
  */
 
-import { toBlob } from 'html-to-image';
-
 /* ------------------------------------------------
  * 字体内联缓存 — 同一组字体只需抓取一次
  * ------------------------------------------------ */
@@ -220,7 +218,11 @@ async function doCaptureToBlob(iframe) {
     );
 
     // 仅注入字体嵌入 CSS。普通样式由 html-to-image 从当前 DOM 的计算样式复制。
-    const fontCSS = await getEmbeddedFontCSS(iframe);
+    // html-to-image 按需加载，避免打进首屏 bundle。
+    const [{ toBlob }, fontCSS] = await Promise.all([
+        import('html-to-image'),
+        getEmbeddedFontCSS(iframe),
+    ]);
 
     const blob = await toBlob(cardEl, {
         quality: 1.0,
@@ -270,6 +272,23 @@ export function warmCaptureCache(iframe) {
     getOrCreateCapturePromise(iframe).catch(() => {
         // 预热失败不打断主流程；用户点击复制时会拿到真实错误。
     });
+}
+
+/**
+ * 下载卡片 PNG 到本地（剪贴板不可用时的可靠出口，尤其是移动端）
+ *
+ * @param {HTMLIFrameElement} iframe
+ */
+export async function downloadImage(iframe) {
+    const blob = await getOrCreateCapturePromise(iframe);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `flashsnap-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 /**

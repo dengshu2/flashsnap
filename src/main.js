@@ -3,10 +3,14 @@
  */
 
 import { generateCard, testConnection, fetchModels } from './api.js';
-import { copyToClipboard, invalidateCaptureCache, warmCaptureCache } from './export.js';
+import { copyToClipboard, downloadImage, invalidateCaptureCache, warmCaptureCache } from './export.js';
 import { CARD_SYSTEM_PROMPT } from './prompts.js';
 import { initTheme } from './theme.js';
 import { getHistory, addHistory, clearHistory, deleteHistoryItem } from './history.js';
+
+// 联调开关：?mock=stream 时用内置样例卡模拟 Gemini 流式返回（无需 API Key），
+// 用于验证流式渲染管线。mock 代码按需加载，不进首屏包。
+const MOCK_STREAM = new URLSearchParams(location.search).get('mock') === 'stream';
 
 // ============================================
 // State
@@ -30,6 +34,7 @@ const els = {
   btnGenerate: $('#btn-generate'),
   btnClear: $('#btn-clear'),
   btnCopy: $('#btn-copy'),
+  btnDownload: $('#btn-download'),
 
   btnRegenerate: $('#btn-regenerate'),
   btnSettings: $('#btn-settings'),
@@ -40,6 +45,8 @@ const els = {
   emptyState: $('#empty-state'),
   loadingState: $('#loading-state'),
   loadingProgress: $('#loading-progress'),
+  streamBadge: $('#stream-badge'),
+  streamBadgeText: $('#stream-badge-text'),
 
   // Settings modal
   settingsModal: $('#settings-modal'),
@@ -77,7 +84,7 @@ const els = {
 function getSettings() {
   return {
     apiKey: localStorage.getItem('flashsnap_api_key') || '',
-    model: localStorage.getItem('flashsnap_model') || 'gemini-2.5-flash',
+    model: localStorage.getItem('flashsnap_model') || 'gemini-3.5-flash',
     baseUrl: localStorage.getItem('flashsnap_base_url') || '',
   };
 }
@@ -122,7 +129,11 @@ function syncCharCount() {
 function showState(stateName) {
   els.emptyState.style.display = stateName === 'empty' ? 'block' : 'none';
   els.loadingState.style.display = stateName === 'loading' ? 'block' : 'none';
-  els.previewFrame.style.display = stateName === 'preview' ? 'block' : 'none';
+  // 'streaming' = 卡片边生成边渲染：iframe 可见，但操作按钮仍隐藏
+  // （此时复制/下载会截到半成品卡片）
+  els.previewFrame.style.display =
+    stateName === 'preview' || stateName === 'streaming' ? 'block' : 'none';
+  els.streamBadge.style.display = stateName === 'streaming' ? 'flex' : 'none';
   // Use visibility+opacity via CSS class instead of display:none so that
   // the action buttons always occupy space and don't shift the header height.
   els.previewActions.classList.toggle('visible', stateName === 'preview');
@@ -177,11 +188,6 @@ function switchTab(tabName) {
   els.panelInput.classList.toggle('panel-hidden', tabName !== 'input');
   els.panelPreview.classList.toggle('panel-hidden', tabName !== 'preview');
 
-  // Clear notification dot when switching to preview
-  if (tabName === 'preview') {
-    els.tabPreview.classList.remove('has-content');
-  }
-
   // 5. 面板切换后多次延迟 scroll，覆盖键盘收起各阶段的 viewport 变化
   if (isMobile()) {
     forceScrollTop();
@@ -206,37 +212,16 @@ function initMobileTabs() {
 }
 
 /**
- * 将 HTML 内容写入 iframe 并自适应高度
+ * Inject a reset style to prevent body/html background from leaking
+ * below the card element. AI-generated HTML often sets a dark body
+ * background while the .card has a different color, causing a
+ * "stretching background" effect when the iframe is taller than the card.
  */
-function renderToIframe(html) {
-  const iframe = els.previewFrame;
-  const container = els.previewContainer;
-  invalidateCaptureCache(iframe);
-
-  // Hide iframe visually while setting up layout to prevent flash.
-  // opacity:0 keeps the element in flow so dimensions can be measured.
-  iframe.style.opacity = '0';
-  iframe.style.transition = 'none'; // disable transition during setup
-
-  // Reset transform before measuring
-  iframe.style.transform = 'none';
-  iframe.style.transformOrigin = 'top left';
-  iframe.style.width = '900px';
-  iframe.style.maxWidth = 'none';
-  iframe.style.height = 'auto';
-
-  const doc = iframe.contentDocument || iframe.contentWindow.document;
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  // Inject a reset style to prevent body/html background from leaking
-  // below the card element. AI-generated HTML often sets a dark body
-  // background while the .card has a different color, causing a
-  // "stretching background" effect when the iframe is taller than the card.
+function injectResetStyle(doc) {
   try {
+    if (doc.getElementById('flashsnap-reset-style')) return;
     const resetStyle = doc.createElement('style');
+    resetStyle.id = 'flashsnap-reset-style';
     resetStyle.textContent = `
       html, body {
         margin: 0 !important;
@@ -251,62 +236,111 @@ function renderToIframe(html) {
   } catch (e) {
     // Cross-origin, ignore
   }
+}
+
+/**
+ * 按卡片自然尺寸设置 iframe 大小，并缩放适配容器宽度。
+ * 流式渲染与最终渲染共用同一套测量逻辑。
+ * @returns {boolean} 文档是否已可测量（body/html 存在）
+ */
+function sizeIframeToCard(iframe, container, doc) {
+  const body = doc.body;
+  const htmlEl = doc.documentElement;
+  if (!body || !htmlEl) return false;
+
+  // Read the card's natural dimensions at full width
+  const cardEl = body.querySelector('.card') || body.firstElementChild;
+  const cardWidth = cardEl ? Math.max(cardEl.scrollWidth, cardEl.offsetWidth, 900) : 900;
+
+  // Set iframe to card's natural size
+  iframe.style.width = cardWidth + 'px';
+
+  // Measure height from the card element directly, NOT from body/html.
+  // body/html can be much taller than the actual card content due to
+  // default margins, AI-generated CSS on body, etc. — causing the
+  // body background to leak below the card ("infinite stretch" bug).
+  const cardHeight = cardEl
+    ? Math.max(cardEl.scrollHeight, cardEl.offsetHeight)
+    : Math.max(body.scrollHeight, body.offsetHeight);
+  const height = Math.max(cardHeight, 1);
+  iframe.style.height = height + 'px';
+
+  // Scale down to fit the preview container if needed
+  const containerWidth = container.clientWidth - 48; // subtract padding
+  if (containerWidth > 0 && containerWidth < cardWidth) {
+    const scale = containerWidth / cardWidth;
+    iframe.style.transform = `scale(${scale})`;
+    iframe.style.transformOrigin = 'top center';
+    // transform:scale doesn't affect layout flow, so we must collapse the
+    // extra space manually: visual height after scale = height * scale,
+    // extra dead space = height * (1 - scale) → collapse with negative margin.
+    iframe.style.marginBottom = `-${Math.ceil(height * (1 - scale))}px`;
+  } else {
+    iframe.style.transform = 'none';
+    iframe.style.marginBottom = '0';
+  }
+  return true;
+}
+
+/**
+ * 将 HTML 内容写入 iframe 并自适应高度
+ * @param {string} html
+ * @param {Object} [options]
+ * @param {boolean} [options.instant] - 流式渲染已展示过内容时置 true：
+ *   跳过隐藏/淡入过程，避免最终权威渲染时画面闪一下。
+ */
+function renderToIframe(html, { instant = false } = {}) {
+  const iframe = els.previewFrame;
+  const container = els.previewContainer;
+  invalidateCaptureCache(iframe);
+
+  if (!instant) {
+    // Hide iframe visually while setting up layout to prevent flash.
+    // opacity:0 keeps the element in flow so dimensions can be measured.
+    iframe.style.opacity = '0';
+    iframe.style.transition = 'none'; // disable transition during setup
+
+    // Reset transform before measuring
+    iframe.style.transform = 'none';
+    iframe.style.transformOrigin = 'top left';
+    iframe.style.width = '900px';
+    iframe.style.maxWidth = 'none';
+    iframe.style.height = 'auto';
+  }
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  injectResetStyle(doc);
 
   // Auto-resize iframe to fit content, then scale to fit container
-  let revealed = false;
+  let revealed = instant;
+  let warmed = false;
   const resizeIframe = () => {
     try {
-      const body = doc.body;
-      const htmlEl = doc.documentElement;
-      if (body && htmlEl) {
-        // Read the card's natural dimensions at full width
-        const cardEl = body.querySelector('.card') || body.firstElementChild;
-        const cardWidth = cardEl ? Math.max(cardEl.scrollWidth, cardEl.offsetWidth, 900) : 900;
+      if (!sizeIframeToCard(iframe, container, doc)) return;
 
-        // Set iframe to card's natural size
-        iframe.style.width = cardWidth + 'px';
+      // Fade in once layout is correct (only once)
+      if (!revealed) {
+        revealed = true;
+        // Force a reflow so the browser applies opacity:0 before transitioning
+        iframe.offsetHeight;
+        iframe.style.transition = 'opacity 200ms ease';
+        iframe.style.opacity = '1';
 
-        // Measure height from the card element directly, NOT from body/html.
-        // body/html can be much taller than the actual card content due to
-        // default margins, AI-generated CSS on body, etc. — causing the
-        // body background to leak below the card ("infinite stretch" bug).
-        const cardHeight = cardEl
-          ? Math.max(cardEl.scrollHeight, cardEl.offsetHeight)
-          : Math.max(body.scrollHeight, body.offsetHeight);
-        const height = Math.max(cardHeight, 1);
-        iframe.style.height = height + 'px';
-
-        // Scale down to fit the preview container if needed
-        const containerWidth = container.clientWidth - 48; // subtract padding
-        if (containerWidth > 0 && containerWidth < cardWidth) {
-          const scale = containerWidth / cardWidth;
-          iframe.style.transform = `scale(${scale})`;
-          iframe.style.transformOrigin = 'top center';
-          // transform:scale doesn't affect layout flow, so we must collapse the
-          // extra space manually: visual height after scale = height * scale,
-          // extra dead space = height * (1 - scale) → collapse with negative margin.
-          iframe.style.marginBottom = `-${Math.ceil(height * (1 - scale))}px`;
-        } else {
-          iframe.style.transform = 'none';
-          iframe.style.marginBottom = '0';
+        // Scroll to top after iframe layout is stable (mobile)
+        if (isMobile()) {
+          forceScrollTop();
+          setTimeout(forceScrollTop, 50);
         }
+      }
 
-        // Fade in once layout is correct (only once)
-        if (!revealed) {
-          revealed = true;
-          // Force a reflow so the browser applies opacity:0 before transitioning
-          iframe.offsetHeight;
-          iframe.style.transition = 'opacity 200ms ease';
-          iframe.style.opacity = '1';
-
-          // Scroll to top after iframe layout is stable (mobile)
-          if (isMobile()) {
-            forceScrollTop();
-            setTimeout(forceScrollTop, 50);
-          }
-
-          warmCaptureCache(iframe);
-        }
+      if (!warmed) {
+        warmed = true;
+        warmCaptureCache(iframe);
       }
     } catch (e) {
       // Cross-origin restrictions, ignore
@@ -338,10 +372,154 @@ function renderToIframe(html) {
 }
 
 // ============================================
+// Streaming Preview（方案 B：单次 open + 增量 document.write）
+//
+// 浏览器解析器原生支持流式 HTML：已渲染部分保持不动，新内容在尾部
+// 追加，天然无闪烁。这里只做观感增强 —— 生成完成后仍由 renderToIframe
+// 做权威渲染（extractHTML + 校验后的完整 HTML），复制/下载/历史记录
+// 均不受流式渲染影响；任何异常只会降级回"骨架屏等待"。
+// ============================================
+
+// 尾部保留字符数：避免把可能是结尾围栏 ``` 前缀的字符写进文档
+const STREAM_TAIL_HOLDBACK = 3;
+// 一直没等到 </style> 时的兜底 reveal 阈值（字符数）
+const STREAM_REVEAL_FALLBACK_CHARS = 3000;
+
+function createStreamRenderer() {
+  const iframe = els.previewFrame;
+  const container = els.previewContainer;
+
+  let doc = null;
+  let startIndex = -1;   // 卡片 HTML 在累积文本中的起始位置
+  let writtenUpTo = -1;  // 已写入文档的位置（累积文本坐标系）
+  let stopped = false;   // 已到达结尾（围栏 / </html>），不再写入
+  let finished = false;  // 流已结束（完成或出错）
+  let revealed = false;
+  let resizePending = false;
+
+  const scheduleResize = () => {
+    if (resizePending) return;
+    resizePending = true;
+    requestAnimationFrame(() => {
+      resizePending = false;
+      if (finished || !doc) return;
+      try {
+        sizeIframeToCard(iframe, container, doc);
+      } catch (e) {
+        // ignore
+      }
+    });
+  };
+
+  // 找到卡片 HTML 起点：优先 markdown 围栏（模型常先输出分析文字），
+  // 其次裸 HTML 标签（与 api.js extractHTML 的识别顺序一致）
+  const findStart = (text) => {
+    const fence = text.match(/```(?:html)?\s*\n/i);
+    const tagIdx = text.search(/<!DOCTYPE|<html\b|<link\b|<style\b|<body\b/i);
+    if (fence && (tagIdx === -1 || fence.index <= tagIdx)) {
+      return fence.index + fence[0].length;
+    }
+    return tagIdx;
+  };
+
+  const begin = () => {
+    invalidateCaptureCache(iframe);
+    iframe.style.opacity = '0';
+    iframe.style.transition = 'none';
+    iframe.style.transform = 'none';
+    iframe.style.transformOrigin = 'top left';
+    iframe.style.width = '900px';
+    iframe.style.maxWidth = 'none';
+    iframe.style.height = 'auto';
+    iframe.style.marginBottom = '0';
+    doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+  };
+
+  const reveal = () => {
+    if (revealed) return;
+    revealed = true;
+    showState('streaming');
+    // Force reflow so opacity:0 applies before transitioning
+    iframe.offsetHeight;
+    iframe.style.transition = 'opacity 200ms ease';
+    iframe.style.opacity = '1';
+    if (isMobile()) forceScrollTop();
+  };
+
+  return {
+    isRevealed: () => revealed,
+
+    /** @param {string} fullText 模型累积输出（onChunk 传入） */
+    update(fullText) {
+      if (stopped || finished) return;
+      try {
+        if (startIndex < 0) {
+          startIndex = findStart(fullText);
+          if (startIndex < 0) return; // HTML 起点还没出现，继续等
+          begin();
+          writtenUpTo = startIndex;
+        }
+
+        // 写入终点：默认保留 holdback 尾部；出现结尾围栏或 </html> 则截断
+        let end = fullText.length - STREAM_TAIL_HOLDBACK;
+        const fenceEnd = fullText.indexOf('\n```', startIndex);
+        const htmlEndIdx = fullText.indexOf('</html>', startIndex);
+        let hardEnd = -1;
+        if (htmlEndIdx !== -1) hardEnd = htmlEndIdx + '</html>'.length;
+        if (fenceEnd !== -1 && (hardEnd === -1 || fenceEnd < hardEnd)) hardEnd = fenceEnd;
+        if (hardEnd !== -1) {
+          end = hardEnd;
+          stopped = true;
+        }
+
+        if (end > writtenUpTo) {
+          doc.write(fullText.slice(writtenUpTo, end));
+          writtenUpTo = end;
+
+          injectResetStyle(doc);
+
+          if (!revealed) {
+            // 样式闭合后再展示，避免看到无样式的裸 HTML（FOUC）
+            const styleEnd = fullText.indexOf('</style>', startIndex);
+            if (
+              (styleEnd !== -1 && styleEnd < end) ||
+              end - startIndex > STREAM_REVEAL_FALLBACK_CHARS
+            ) {
+              reveal();
+            }
+          }
+          if (revealed) scheduleResize();
+        }
+      } catch (e) {
+        // 流式渲染失败只放弃增量预览，最终渲染不受影响
+        stopped = true;
+      }
+    },
+
+    /** 结束流（完成或出错时调用），关闭文档解析器 */
+    finish() {
+      if (finished) return;
+      finished = true;
+      if (doc) {
+        try {
+          doc.close();
+        } catch (e) {
+          // ignore
+        }
+      }
+    },
+  };
+}
+
+// ============================================
 // Core: Generate Card
 // ============================================
 async function handleGenerate() {
-  const input = els.inputText.value.trim();
+  // 防止生成过程中再次触发（例如点击"重试"）导致并发请求互相覆盖
+  if (state.isGenerating) return;
+
+  const input = els.inputText.value.trim() || (MOCK_STREAM ? '[mock stream]' : '');
 
   if (!input) {
     showToast('请输入要生成信息卡的内容', 'error');
@@ -350,16 +528,18 @@ async function handleGenerate() {
   }
 
   const settings = getSettings();
-  if (!settings.apiKey) {
+  if (!settings.apiKey && !MOCK_STREAM) {
     showToast('请先在设置中配置 API Key', 'error');
     showSettingsModal();
     return;
   }
 
   state.lastInput = input;
+  state.currentHTML = null; // 流式期间禁止复制/下载到上一张卡
   setGenerating(true);
   showState('loading');
   els.loadingProgress.textContent = '';
+  els.streamBadgeText.textContent = '生成中…';
 
   // Scroll to top after all DOM changes have settled
   if (isMobile()) {
@@ -369,24 +549,30 @@ async function handleGenerate() {
     setTimeout(forceScrollTop, 400);
   }
 
-  let chunkCount = 0;
+  const startTime = Date.now();
+  const streamRenderer = createStreamRenderer();
 
-  await generateCard({
+  const generateOptions = {
     apiKey: settings.apiKey,
     model: settings.model,
     userContent: input,
     systemPrompt: CARD_SYSTEM_PROMPT,
     baseUrl: settings.baseUrl || undefined,
     onChunk(text) {
-      chunkCount++;
-      els.loadingProgress.textContent = `已接收 ${text.length} 字符...`;
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      const progress = `已接收 ${text.length} 字符 · ${elapsed}s`;
+      els.loadingProgress.textContent = progress;
+      els.streamBadgeText.textContent = `生成中 · ${progress}`;
+      streamRenderer.update(text);
     },
     onComplete(html) {
+      streamRenderer.finish();
       state.currentHTML = html;
-      renderToIframe(html);
+      // 流式渲染已展示过卡片时用 instant 模式做权威渲染，避免闪屏
+      renderToIframe(html, { instant: streamRenderer.isRevealed() });
       showState('preview');
       setGenerating(false);
-      const historyResult = addHistory(input, html);
+      const historyResult = MOCK_STREAM ? { saved: true } : addHistory(input, html);
       if (historyResult?.saved === false) {
         const message = historyResult.reason === 'too_large'
           ? '卡片过大，未写入历史记录'
@@ -400,6 +586,7 @@ async function handleGenerate() {
       showToast('信息卡生成完成！');
     },
     onError(error) {
+      streamRenderer.finish();
       setGenerating(false);
       showState('empty');
 
@@ -416,7 +603,14 @@ async function handleGenerate() {
 
       showToast(errorMsg, 'error');
     },
-  });
+  };
+
+  if (MOCK_STREAM) {
+    const { mockStreamCard } = await import('./mock.js');
+    await mockStreamCard(generateOptions);
+  } else {
+    await generateCard(generateOptions);
+  }
 }
 
 // ============================================
@@ -448,6 +642,25 @@ async function handleCopy() {
 
 
 
+async function handleDownload() {
+  if (!state.currentHTML) return;
+  if (els.btnDownload.disabled) return;
+
+  const label = els.btnDownload.querySelector('.btn-label');
+  els.btnDownload.disabled = true;
+  try {
+    label.textContent = '导出中...';
+    await downloadImage(els.previewFrame);
+    label.textContent = '下载';
+    showToast('图片已开始下载');
+  } catch (error) {
+    label.textContent = '下载';
+    showToast(`下载失败：${error.message}`, 'error');
+  } finally {
+    els.btnDownload.disabled = false;
+  }
+}
+
 function handleRegenerate() {
   if (state.lastInput) {
     els.inputText.value = state.lastInput;
@@ -466,13 +679,23 @@ function showSettingsModal() {
   els.apiTestStatus.className = 'api-test-status';
   els.settingsModal.style.display = 'flex';
 
+  // Seed the select with the saved model so it survives even when the
+  // model list can't be fetched (no cache + network failure). Otherwise
+  // saving settings would silently reset the model to the default.
+  renderModelOptions(buildInitialModelOptions(settings.model), settings.model);
+
   // If we have a key, try to load models and restore selection
   if (settings.apiKey) {
     loadModelsAndRestore(settings);
-  } else {
-    // Reset to default
-    els.modelSelect.innerHTML = '<option value="gemini-2.5-flash">Gemini 2.5 Flash（默认）</option>';
   }
+}
+
+function buildInitialModelOptions(savedModel) {
+  const options = [{ id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash（默认）' }];
+  if (savedModel && savedModel !== 'gemini-3.5-flash') {
+    options.unshift({ id: savedModel, name: `${savedModel}（当前）` });
+  }
+  return options;
 }
 
 async function loadModelsAndRestore(settings) {
@@ -804,6 +1027,7 @@ function init() {
 
   // Export actions
   els.btnCopy.addEventListener('click', handleCopy);
+  els.btnDownload.addEventListener('click', handleDownload);
 
   els.btnRegenerate.addEventListener('click', handleRegenerate);
 
@@ -882,6 +1106,14 @@ function init() {
   // --- Theme ---
   initTheme(els.btnTheme);
   initAnalytics();
+
+  // 空闲时预热按需加载的大依赖（Gemini SDK / html-to-image），
+  // 首屏不用等它们，首次点击"生成"时也基本无需等待下载。
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 2000));
+  idle(() => {
+    import('@google/genai').catch(() => { });
+    import('html-to-image').catch(() => { });
+  });
 }
 
 // Boot

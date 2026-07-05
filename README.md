@@ -5,7 +5,7 @@
 ## ✨ 功能
 
 - 🎨 **AI 信息卡生成** — 输入任意文字，Gemini Flash 自动生成杂志质感 HTML 信息卡
-- 📋 **一键复制** — 生成的卡片自动转为高清 PNG，一键复制到剪贴板
+- 📋 **一键复制 / 下载** — 生成的卡片自动转为高清 PNG，一键复制到剪贴板或下载到本地
 - ⚡ **流式渲染** — 实时显示 AI 生成进度
 - 📜 **历史记录** — 本地保存已生成的卡片，随时回顾
 - 🔑 **自带 Key** — 使用你自己的 Gemini API Key，安全私密
@@ -19,6 +19,9 @@ npm install
 npm run dev
 ```
 
+> 联调技巧：访问 `/?mock=stream` 可在不消耗 API 配额、无需 API Key 的情况下，
+> 用内置样例卡模拟完整的流式生成过程（用于验证流式渲染管线）。
+
 ### 生产构建
 
 ```bash
@@ -31,7 +34,7 @@ npm run build
 
 1. 打开应用，点击右上角 ⚙️ 设置图标
 2. 输入你的 [Gemini API Key](https://aistudio.google.com/apikey)
-3. 选择模型（推荐 Gemini 2.5 Flash）
+3. 选择模型（推荐 Gemini 3.5 Flash）
 4. 如需代理，可配置 API Base URL
 
 ## 🏗️ 技术栈

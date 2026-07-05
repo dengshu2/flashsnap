@@ -3,21 +3,21 @@
  * 处理与 Gemini Flash API 的通信
  */
 
-import { GoogleGenAI } from '@google/genai';
-
 const MAX_HTML_OUTPUT_TOKENS = 16384;
 
 let aiInstance = null;
 let aiInstanceKey = null;  // 缓存 key，用于判断是否需要重新创建
 
 /**
- * 获取或创建 AI 实例（参数不变时复用已有实例）
+ * 获取或创建 AI 实例（参数不变时复用已有实例）。
+ * SDK 通过动态 import 按需加载，避免打进首屏 bundle。
  */
-function getAI(apiKey, baseUrl) {
+async function getAI(apiKey, baseUrl) {
     const cacheKey = `${apiKey}|${baseUrl || ''}`;
     if (aiInstance && aiInstanceKey === cacheKey) {
         return aiInstance;
     }
+    const { GoogleGenAI } = await import('@google/genai');
     const options = { apiKey };
     if (baseUrl) {
         options.httpOptions = { baseUrl };
@@ -35,7 +35,7 @@ function getAI(apiKey, baseUrl) {
  */
 export async function testConnection(apiKey, baseUrl) {
     try {
-        const ai = getAI(apiKey, baseUrl);
+        const ai = await getAI(apiKey, baseUrl);
         // Use models.list() to verify API key — lightweight, no content generation needed
         const pager = await ai.models.list({ config: { pageSize: 1 } });
         let hasModel = false;
@@ -70,7 +70,7 @@ export async function testConnection(apiKey, baseUrl) {
  */
 export async function fetchModels(apiKey, baseUrl) {
     try {
-        const ai = getAI(apiKey, baseUrl);
+        const ai = await getAI(apiKey, baseUrl);
         const pager = await ai.models.list({ config: { pageSize: 100 } });
 
         const models = [];
@@ -249,7 +249,7 @@ function validateGeneratedHTML(html) {
  */
 export async function generateCard({ apiKey, model, userContent, systemPrompt, baseUrl, onChunk, onComplete, onError }) {
     try {
-        const ai = getAI(apiKey, baseUrl);
+        const ai = await getAI(apiKey, baseUrl);
 
         const response = await ai.models.generateContentStream({
             model,
@@ -291,7 +291,7 @@ export async function generateCard({ apiKey, model, userContent, systemPrompt, b
  * 生成信息卡 HTML（非流式，用于备用）
  */
 export async function generateCardSync({ apiKey, model, userContent, systemPrompt, baseUrl }) {
-    const ai = getAI(apiKey, baseUrl);
+    const ai = await getAI(apiKey, baseUrl);
 
     const response = await ai.models.generateContent({
         model,

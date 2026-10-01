@@ -20,18 +20,28 @@
 /* The card: written live into a 600px frame scaled to the column, then
    replaced by its rendered image. */
 .result { display: grid; gap: 10px; scroll-margin-top: 80px; }
-.result .q-result-label { padding-left: 2px; }
+.result-head { display: flex; justify-content: space-between; gap: 12px; padding-inline: 2px; }
 .stage {
     position: relative; overflow: hidden; border-radius: 14px; min-height: 160px;
     background: var(--q-bubble); box-shadow: var(--q-shadow);
 }
+/* The frame stays hidden until it has something to show: an empty frame is
+   painted as a white line when its colour scheme differs from the page's. */
 .stage .frame {
-    position: absolute; left: 0; top: 0; width: 600px; border: 0; transform-origin: 0 0;
-    background: transparent; pointer-events: none;
+    position: absolute; left: 0; top: 0; width: 600px; height: 0; border: 0; transform-origin: 0 0;
+    background: transparent; pointer-events: none; visibility: hidden; transition: opacity 0.2s ease;
 }
+.stage .frame.has-card { visibility: visible; }
 .stage .shot { position: relative; display: block; width: 100%; height: auto; }
-.stage .waiting { position: absolute; left: 50%; top: 72px; transform: translateX(-50%); }
-.result:not(.is-live) .frame { visibility: hidden; }
+.stage .waiting { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; }
+.stage.has-content .waiting { display: none; }
+/* While the model reworks a card that broke a rule, the first version is dimmed. */
+.result.is-fixing .frame { opacity: 0.35; }
+.result.is-fixing .stage.has-content .waiting { display: inline-flex; }
+@media (prefers-reduced-motion: no-preference) {
+    .stage .shot.is-new { animation: shot-in 0.25s ease-out; }
+    @keyframes shot-in { from { opacity: 0; } }
+}
 .result .q-result-actions, .card-page .q-actions { flex-wrap: wrap; gap: 8px; }
 .act { gap: 6px; }
 .act.done { color: var(--q-accent); }

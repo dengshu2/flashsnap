@@ -22,6 +22,7 @@ export class Preview {
         this.pending = null;
         this.scheduled = false;
         this.height = 0;
+        this.reserve = false; // hold a 3:4 card's space while waiting for content
         this.loaded = new Promise((resolve) => {
             if (frame.contentDocument?.readyState === 'complete' && frame.contentDocument.getElementById('card-css')) resolve();
             else frame.addEventListener('load', () => resolve(), { once: true });
@@ -29,9 +30,12 @@ export class Preview {
         new ResizeObserver(() => this.fit()).observe(stage);
     }
 
-    clear() {
+    /** Empties the frame; with reserve, keeps a 3:4 space for the card to come. */
+    clear({ reserve = false } = {}) {
         this.pending = null;
         this.height = 0;
+        this.reserve = reserve;
+        this.fit();
         this.loaded.then(() => {
             const doc = this.frame.contentDocument;
             doc.getElementById('card-css').textContent = '';
@@ -68,9 +72,19 @@ export class Preview {
     }
 
     fit() {
-        const scale = this.stage.clientWidth / CARD_WIDTH || 1;
-        this.frame.style.height = `${Math.max(this.height, 1)}px`;
+        const width = this.stage.clientWidth;
+        const scale = width / CARD_WIDTH || 1;
+        this.frame.style.height = `${this.height}px`;
         this.frame.style.transform = `scale(${scale})`;
+        this.frame.classList.toggle('has-card', this.height > 0);
+        this.stage.classList.toggle('has-content', this.height > 0);
         this.stage.style.height = this.height ? `${Math.ceil(this.height * scale)}px` : '';
+        this.stage.style.minHeight = this.reserve ? `${Math.round((width * 4) / 3)}px` : '';
+    }
+
+    /** Stops holding space (the image is about to take over). */
+    release() {
+        this.reserve = false;
+        this.fit();
     }
 }

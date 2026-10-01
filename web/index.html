@@ -56,7 +56,10 @@
                     </form>
                     <div class="q-ideas" id="ideas" role="group" aria-label="试一试"></div>
                     <section class="result" id="result" aria-live="polite" aria-label="卡片" hidden>
-                        <span class="q-result-label" id="result-label"></span>
+                        <div class="result-head">
+                            <span class="q-result-label" id="result-label"></span>
+                            <span class="q-result-label" id="result-style"></span>
+                        </div>
                         <div class="stage" id="result-stage">
                             <iframe class="frame" id="preview" src="/frame.html" sandbox="allow-same-origin" title="卡片预览" tabindex="-1" aria-hidden="true"></iframe>
                             <img class="shot" id="result-img" alt="" hidden>

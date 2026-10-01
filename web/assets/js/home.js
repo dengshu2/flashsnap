@@ -42,7 +42,7 @@ export class Home {
             seg: $('style-seg'), form: $('editor'), input: $('editor-input'), count: $('editor-count'),
             clear: $('editor-clear'), submit: $('editor-submit'), submitLabel: $('editor-submit-label'),
             ideas: $('ideas'), result: $('result'), label: $('result-label'), stage: $('result-stage'),
-            img: $('result-img'), waiting: $('result-waiting'), actions: $('result-actions'),
+            img: $('result-img'), waiting: $('result-waiting'), actions: $('result-actions'), styleTag: $('result-style'),
             recentSec: $('recent-sec'), recent: $('recent'),
         };
         this.preview = new Preview($('preview'), this.el.stage);
@@ -190,21 +190,22 @@ export class Home {
         let reply = '';
         let created = null;
         try {
+            let writing = false;
             await streamCard({ text, style }, (name, data) => {
                 if (name === 'delta') {
                     reply += data.text;
                     const html = htmlSoFar(reply);
                     if (html) {
-                        if (!this.el.waiting.hidden) {
-                            this.el.waiting.hidden = true;
-                            this.el.label.textContent = `${STAGE.writing} · ${this.styleName(style)}…`;
+                        if (!writing) {
+                            writing = true;
+                            this.setStatus('writing');
                         }
                         this.preview.show(html);
                     }
                 } else if (name === 'stage') {
-                    // "writing" starts before the model has thought it through; the
-                    // label switches when the first HTML arrives.
-                    if (data.stage !== 'writing') this.el.label.textContent = `${STAGE[data.stage] || '处理中'}…`;
+                    // The server says "writing" as soon as it asks the model, which
+                    // thinks for a few seconds first: the first HTML switches the label.
+                    if (data.stage !== 'writing') this.setStatus(data.stage);
                 } else if (name === 'done') {
                     created = data.card;
                 } else if (name === 'error') {
@@ -220,6 +221,11 @@ export class Home {
             this.sync();
         }
         if (created) {
+            // The live preview stays up until the image is ready, so there is
+            // no blank moment between the two.
+            const pre = new Image();
+            pre.src = `/img/${created.id}.png`;
+            try { await pre.decode(); } catch { /* show it anyway */ }
             this.showCard(created, true);
             if (this.recent) this.recent.unshift(created);
             this.onCreated(created);
@@ -230,23 +236,34 @@ export class Home {
     }
 
     startPreview(style) {
-        const { result, img, waiting, actions, label, stage } = this.el;
+        const { result, img, actions, styleTag } = this.el;
         result.hidden = false;
         result.classList.add('is-live');
         img.hidden = true;
         img.removeAttribute('src');
-        waiting.hidden = false;
         actions.hidden = true;
-        stage.classList.remove('q-rise');
-        label.textContent = `${STAGE.thinking} · ${this.styleName(style)}…`;
-        this.preview.clear();
+        styleTag.textContent = this.styleName(style);
+        this.setStatus('thinking');
+        this.preview.clear({ reserve: true });
+    }
+
+    /**
+     * The status line while a card is made. The dots stay until the card shows
+     * (the model writes its styles first) and come back over it while it is
+     * being fixed.
+     */
+    setStatus(stage) {
+        const { label, waiting, result } = this.el;
+        label.textContent = `${STAGE[stage] || '处理中'}…`;
+        waiting.hidden = stage === 'rendering';
+        result.classList.toggle('is-fixing', stage === 'fixing');
     }
 
     /** Shows a saved card's image in the result area (null hides it). */
     showCard(card, fresh = false) {
-        const { result, img, waiting, actions, label, stage } = this.el;
+        const { result, img, waiting, actions, label, styleTag } = this.el;
         this.card = card;
-        result.classList.remove('is-live');
+        result.classList.remove('is-live', 'is-fixing');
         if (!card) {
             result.hidden = true;
             this.preview.clear();
@@ -254,20 +271,18 @@ export class Home {
         }
         result.hidden = false;
         waiting.hidden = true;
-        label.textContent = `${this.styleName(card.style)} · 刚刚`;
+        label.textContent = '已生成';
+        styleTag.textContent = this.styleName(card.style);
         img.style.aspectRatio = `${card.width} / ${card.height}`;
         img.alt = card.title;
-        img.onload = () => {
-            this.preview.clear();
-            stage.style.height = '';
-        };
         img.src = `/img/${card.id}.png`;
         img.hidden = false;
+        img.classList.remove('is-new');
         if (fresh) {
-            stage.classList.remove('q-rise');
-            void stage.offsetWidth;
-            stage.classList.add('q-rise');
+            void img.offsetWidth; // restart the fade
+            img.classList.add('is-new');
         }
+        this.preview.clear();
         actions.hidden = false;
         actions.replaceChildren(...cardActions(card, () => this.regenerate(card.text, card.style)));
     }

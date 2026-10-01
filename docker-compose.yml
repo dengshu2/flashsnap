@@ -1,14 +1,27 @@
 services:
   flashsnap:
-    build:
-      context: .
-      args:
-        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID}
+    build: .
     container_name: flashsnap
     restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
     networks:
       - proxy-network
+    healthcheck:
+      test: ["CMD", "/app/flashsnap", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
 
 networks:
+  # Must stay IPv4-only: Google rejects this VPS's IPv6 range for the Gemini API.
   proxy-network:
     external: true

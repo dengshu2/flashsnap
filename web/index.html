@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">
+    <title>FlashSnap</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <script src="/assets/js/theme-init.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/assets/css/quiet.css">
+    <link rel="stylesheet" href="/assets/css/app.css">
+    <script type="module" src="/assets/js/main.js"></script>
+    <!-- analytics -->
+</head>
+<body>
+    <svg class="sprite" aria-hidden="true">
+        <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="5" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/><rect x="13" y="11" width="7" height="9" rx="1.5"/></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17l9-10"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+        <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    </svg>
+
+    <a class="q-skip" href="#editor-input">跳至输入框</a>
+
+    <div class="q-app">
+        <!-- Home: the text goes into the editor card, the card appears right under it. -->
+        <section id="view-home" aria-label="生成卡片">
+            <header class="q-top">
+                <a class="q-round" href="#history" aria-label="全部卡片"><svg class="q-i"><use href="#i-grid"/></svg></a>
+                <div class="q-status">
+                    <b class="brand"><span class="q-mark" aria-hidden="true">卡</span>FlashSnap</b>
+                    <span id="home-status">把文字做成信息卡</span>
+                </div>
+                <a class="q-pill" href="#account">账户</a>
+            </header>
+            <main class="q-page home" id="main-content">
+                <div class="q-tool">
+                    <div class="q-seg styles" id="style-seg" role="group" aria-label="风格"></div>
+                    <form class="q-editor" id="editor" autocomplete="off">
+                        <label class="q-visually-hidden" for="editor-input">要做成卡片的文字</label>
+                        <textarea id="editor-input" rows="5" placeholder="粘贴一段文字：新闻、概念、清单、数据、名言都可以"></textarea>
+                        <div class="q-editor-foot">
+                            <span class="q-count" id="editor-count" aria-live="polite"></span>
+                            <button class="q-btn q-btn--quiet q-btn--sm" id="editor-clear" type="button" hidden>清空</button>
+                            <button class="q-btn q-btn--primary submit" id="editor-submit" type="submit" disabled><span class="q-spinner" aria-hidden="true"></span><span id="editor-submit-label">生成</span></button>
+                        </div>
+                    </form>
+                    <div class="q-ideas" id="ideas" role="group" aria-label="试一试"></div>
+                    <section class="result" id="result" aria-live="polite" aria-label="卡片" hidden>
+                        <span class="q-result-label" id="result-label"></span>
+                        <div class="stage" id="result-stage">
+                            <iframe class="frame" id="preview" src="/frame.html" sandbox="allow-same-origin" title="卡片预览" tabindex="-1" aria-hidden="true"></iframe>
+                            <img class="shot" id="result-img" alt="" hidden>
+                            <span class="q-typing waiting" id="result-waiting"><i></i><i></i><i></i></span>
+                        </div>
+                        <div class="q-result-actions" id="result-actions" hidden></div>
+                    </section>
+                </div>
+                <section class="q-sec" id="recent-sec" aria-labelledby="recent-title" hidden>
+                    <div class="sec-head">
+                        <h3 id="recent-title">最近</h3>
+                        <a class="q-link" href="#history">全部卡片</a>
+                    </div>
+                    <div class="tiles" id="recent"></div>
+                </section>
+            </main>
+        </section>
+
+        <section id="view-history" aria-labelledby="history-title" hidden>
+            <header class="q-top">
+                <button class="q-round" type="button" data-back aria-label="返回"><svg class="q-i"><use href="#i-back"/></svg></button>
+                <span></span>
+                <span></span>
+            </header>
+            <main class="q-page">
+                <div class="q-page-head">
+                    <h2 id="history-title">全部卡片</h2>
+                    <p id="history-count"></p>
+                </div>
+                <input class="q-search" id="history-search" type="search" placeholder="搜索标题或原文" aria-label="搜索卡片">
+                <div class="tiles" id="history-grid"></div>
+                <div id="history-sentinel"></div>
+            </main>
+        </section>
+
+        <section id="view-card" aria-label="卡片" hidden>
+            <header class="q-top">
+                <button class="q-round" type="button" data-back aria-label="返回"><svg class="q-i"><use href="#i-back"/></svg></button>
+                <span></span>
+                <span></span>
+            </header>
+            <main class="q-page card-page" id="card-body"></main>
+        </section>
+
+        <section id="view-account" aria-labelledby="account-title" hidden>
+            <header class="q-top">
+                <button class="q-round" type="button" data-back aria-label="返回"><svg class="q-i"><use href="#i-back"/></svg></button>
+                <span></span>
+                <span></span>
+            </header>
+            <main class="q-page">
+                <div class="q-page-head">
+                    <h2 id="account-title">账户</h2>
+                    <p id="account-email"></p>
+                </div>
+                <section class="q-sec">
+                    <h3>外观</h3>
+                    <div class="q-seg" id="theme-seg" role="group" aria-label="外观">
+                        <button type="button" data-theme-pref="system">跟随系统</button>
+                        <button type="button" data-theme-pref="light">浅色</button>
+                        <button type="button" data-theme-pref="dark">深色</button>
+                    </div>
+                </section>
+                <section class="q-sec" aria-labelledby="usage-title">
+                    <h3 id="usage-title">用量</h3>
+                    <div class="q-seg" id="usage-range" role="group" aria-label="时间范围">
+                        <button type="button" data-days="7">7 天</button>
+                        <button type="button" data-days="30">30 天</button>
+                        <button type="button" data-days="90">90 天</button>
+                    </div>
+                    <div id="usage-body" class="usage"></div>
+                </section>
+                <section class="q-sec">
+                    <div class="q-actions"><button class="q-btn" id="logout-btn" type="button">退出登录</button></div>
+                </section>
+            </main>
+        </section>
+    </div>
+
+    <div class="q-toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>

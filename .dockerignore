@@ -1,8 +1,5 @@
-node_modules
-dist
 .git
-.gitignore
-.vscode
-.idea
+.env
+data
+study
 *.md
-LICENSE

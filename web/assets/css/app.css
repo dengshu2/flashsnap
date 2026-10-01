@@ -1,0 +1,77 @@
+/* FlashSnap on Quiet UI (quiet.css). Only what is specific to FlashSnap lives here. */
+
+:root {
+    /* FlashSnap's mark: the amber 卡 (q-mark and the app icon). */
+    --q-mark: #b45309;
+}
+
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.brand { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Home ──────────────────────────────────────────────────────────────── */
+
+.home { padding-top: 2vh; }
+.styles { justify-self: stretch; }
+.submit { gap: 8px; min-width: 88px; justify-content: center; }
+.submit .q-spinner { display: none; width: 14px; height: 14px; }
+.submit.is-busy .q-spinner { display: block; }
+.submit.is-busy:disabled { opacity: 0.7; }
+
+/* The card: written live into a 600px frame scaled to the column, then
+   replaced by its rendered image. */
+.result { display: grid; gap: 10px; scroll-margin-top: 80px; }
+.result .q-result-label { padding-left: 2px; }
+.stage {
+    position: relative; overflow: hidden; border-radius: 14px; min-height: 160px;
+    background: var(--q-bubble); box-shadow: var(--q-shadow);
+}
+.stage .frame {
+    position: absolute; left: 0; top: 0; width: 600px; border: 0; transform-origin: 0 0;
+    background: transparent; pointer-events: none;
+}
+.stage .shot { position: relative; display: block; width: 100%; height: auto; }
+.stage .waiting { position: absolute; left: 50%; top: 72px; transform: translateX(-50%); }
+.result:not(.is-live) .frame { visibility: hidden; }
+.result .q-result-actions, .card-page .q-actions { flex-wrap: wrap; gap: 8px; }
+.act { gap: 6px; }
+.act.done { color: var(--q-accent); }
+.act.danger:hover { color: var(--q-danger); }
+
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; }
+.sec-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--q-sub); }
+.sec-head .q-link { font-weight: 500; color: var(--q-sub); }
+.sec-head .q-link:hover { color: var(--q-ink); }
+
+/* ── Tiles (recent and all cards) ─────────────────────────────────────── */
+
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; align-items: start; }
+@media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.tile { display: grid; gap: 6px; color: inherit; text-decoration: none; border-radius: 12px; }
+.tile-img { display: block; overflow: hidden; border-radius: 10px; background: var(--q-bubble); box-shadow: var(--q-shadow); }
+.tile-img img { display: block; width: 100%; height: auto; transition: transform 0.2s ease; }
+.tile:hover .tile-img img { transform: scale(1.02); }
+.tile-title { font-size: 14px; font-weight: 500; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tile-meta { font-size: 12.5px; color: var(--q-sub); }
+.tile-skel { aspect-ratio: 3 / 4; border-radius: 10px; }
+.tiles > .q-state { grid-column: 1 / -1; }
+#history-search { margin-bottom: 6px; }
+
+/* ── One card ──────────────────────────────────────────────────────────── */
+
+.card-page { gap: 18px; }
+.card-figure { margin: 0; overflow: hidden; border-radius: 14px; box-shadow: var(--q-shadow); background: var(--q-bubble); }
+.card-figure .shot { display: block; width: 100%; height: auto; }
+.source { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.7; }
+
+/* ── Usage ─────────────────────────────────────────────────────────────── */
+
+.usage { display: grid; gap: 14px; }
+.usage-foot { margin: 0; font-size: 12.5px; color: var(--q-sub); line-height: 1.6; }
+
+/* ── Sign in ───────────────────────────────────────────────────────────── */
+
+.auth { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 28px; padding-block: 24px; }
+.auth-brand { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.auth-title { margin: 0; font-size: 30px; font-weight: 650; letter-spacing: -0.03em; }
+.auth-tagline { margin: 0; color: var(--q-sub); }
+.auth-form { width: 100%; max-width: 380px; display: grid; gap: 14px; }

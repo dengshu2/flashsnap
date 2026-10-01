@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">
+    <title>登录 · FlashSnap</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <script src="/assets/js/theme-init.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/assets/css/quiet.css">
+    <link rel="stylesheet" href="/assets/css/app.css">
+    <script type="module" src="/assets/js/login.js"></script>
+    <!-- analytics -->
+</head>
+<body>
+    <main class="q-app auth">
+        <div class="auth-brand">
+            <span class="q-mark q-mark--lg" aria-hidden="true">卡</span>
+            <h1 class="auth-title">FlashSnap</h1>
+            <p class="auth-tagline">把一段文字做成信息卡</p>
+        </div>
+        <form class="auth-form" id="auth-form" novalidate>
+            <label>
+                <span class="q-field-label">邮箱</span>
+                <input class="q-field" type="email" id="auth-email" autocomplete="email" required>
+            </label>
+            <label>
+                <span class="q-field-label">密码</span>
+                <input class="q-field" type="password" id="auth-password" autocomplete="current-password" required>
+            </label>
+            <p class="q-notice q-notice--danger" id="auth-error" role="alert" hidden></p>
+            <button class="q-btn q-btn--primary q-btn--wide" id="auth-submit" type="submit">登录</button>
+        </form>
+    </main>
+</body>
+</html>

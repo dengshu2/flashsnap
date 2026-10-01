@@ -101,9 +101,14 @@ func Handler(umamiID string) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", f.ctype)
-		if r.URL.Query().Get("v") == version {
+		switch {
+		case key == "/frame.html":
+			// no-transform keeps Cloudflare from injecting its analytics script
+			// into the preview frame, where the sandbox would block it anyway.
+			w.Header().Set("Cache-Control", "no-cache, no-transform")
+		case r.URL.Query().Get("v") == version:
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
+		default:
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		w.Header().Set("ETag", f.etag)

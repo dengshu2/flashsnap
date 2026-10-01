@@ -48,6 +48,9 @@ func TestAssetsAreVersioned(t *testing.T) {
 	if cc := get(t, h, "/assets/js/main.js?v=old").Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Errorf("stale version cache = %q", cc)
 	}
+	if cc := get(t, h, "/frame.html").Header().Get("Cache-Control"); !strings.Contains(cc, "no-transform") {
+		t.Errorf("frame cache = %q", cc)
+	}
 	if get(t, h, "/login").Code != 200 || get(t, h, "/frame.html").Code != 200 || get(t, h, "/nope").Code != 404 {
 		t.Error("routing broken")
 	}

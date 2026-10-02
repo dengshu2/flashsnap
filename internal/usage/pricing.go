@@ -1,38 +1,53 @@
-// Package usage prices Gemini calls.
+// Package usage prices DeepSeek calls.
 package usage
 
-import "time"
+import (
+	"time"
 
-// price is USD per 1M tokens, effective from `from` until the next entry.
+	"flashsnap/internal/llm"
+)
+
+// price is USD per 1M tokens.
 type price struct {
-	from          time.Time
-	input, output float64
+	input, cached, output float64
 }
 
-var jan2027 = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+// DeepSeek list prices from https://api-docs.deepseek.com/quick_start/pricing
+// (checked 2026-09-30); peak hours cost double.
+var deepseekFlash = price{input: 0.15, cached: 0.003, output: 0.60}
 
-// Paid-tier list prices from https://ai.google.dev/gemini-api/docs/pricing
-// (checked 2026-09-29); Google announced they double on 2027-01-01.
-var prices = map[string][]price{
-	"gemini-3.8-flash": {
-		{time.Time{}, 0.75, 3.75},
-		{jan2027, 1.50, 7.50},
-	},
-}
-
-// Cost returns the USD cost of a call made at `at`; thinking tokens are billed
-// as output, so callers include them in `output`. known is false for models
-// without a price (the cost is then 0).
-func Cost(model string, at time.Time, input, output int) (usd float64, known bool) {
-	tiers, ok := prices[model]
-	if !ok {
+// Cost returns the USD cost of a call made at `at`. Thinking tokens are
+// billed as output. known is false for models without a price (cost 0).
+func Cost(u llm.Usage, at time.Time) (usd float64, known bool) {
+	p, known := priceAt(u.Model, at)
+	if !known {
 		return 0, false
 	}
-	p := tiers[0]
-	for _, t := range tiers[1:] {
-		if !at.Before(t.from) {
-			p = t
+	cached := min(u.CachedTokens, u.InputTokens)
+	return (float64(u.InputTokens-cached)*p.input +
+		float64(cached)*p.cached +
+		float64(u.OutputTokens+u.ThoughtTokens)*p.output) / 1e6, true
+}
+
+func priceAt(model string, at time.Time) (price, bool) {
+	switch model {
+	case "deepseek-flash", "deepseek-v4-flash":
+		if deepseekPeak(at) {
+			return price{deepseekFlash.input * 2, deepseekFlash.cached * 2, deepseekFlash.output * 2}, true
 		}
+		return deepseekFlash, true
 	}
-	return (float64(input)*p.input + float64(output)*p.output) / 1e6, true
+	return price{}, false
+}
+
+// deepseekPeak reports DeepSeek's peak hours: 01:00–04:00 and 06:00–10:00 UTC,
+// Monday to Friday. Chinese public holidays are off-peak too but are not
+// modelled, so calls on those days are estimated high.
+func deepseekPeak(at time.Time) bool {
+	t := at.UTC()
+	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
+		return false
+	}
+	h := t.Hour()
+	return (h >= 1 && h < 4) || (h >= 6 && h < 10)
 }

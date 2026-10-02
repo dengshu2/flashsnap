@@ -15,7 +15,7 @@ import (
 
 	"flashsnap/internal/auth"
 	"flashsnap/internal/cardhtml"
-	"flashsnap/internal/gemini"
+	"flashsnap/internal/llm"
 	"flashsnap/internal/prompt"
 	"flashsnap/internal/render"
 	"flashsnap/internal/store"
@@ -125,7 +125,7 @@ func (s *server) makeCard(ctx context.Context, userID, text, style string, emit 
 		fail("没有这种风格", err)
 		return
 	}
-	turns := []gemini.Turn{{Role: "user", Text: text}}
+	turns := []llm.Turn{{Role: "user", Text: text}}
 	emit("stage", map[string]string{"stage": "writing"})
 	reply, u, err := s.Model.Stream(ctx, system, turns, maxOutputTokens, func(t string) {
 		emit("delta", map[string]string{"text": t})
@@ -150,7 +150,7 @@ func (s *server) makeCard(ctx context.Context, userID, text, style string, emit 
 
 	if problems := check(res); len(problems) > 0 {
 		emit("stage", map[string]any{"stage": "fixing", "problems": problems})
-		turns = append(turns, gemini.Turn{Role: "model", Text: reply}, gemini.Turn{Role: "user", Text: prompt.Repair(problems)})
+		turns = append(turns, llm.Turn{Role: "assistant", Text: reply}, llm.Turn{Role: "user", Text: prompt.Repair(problems)})
 		reply2, u2, err := s.Model.Stream(ctx, system, turns, maxOutputTokens, nil)
 		s.record(userID, opRepair, u2)
 		if err == nil {
@@ -204,7 +204,7 @@ func check(res render.Result) []string {
 
 func modelError(err error) string {
 	switch {
-	case errors.Is(err, gemini.ErrRateLimited):
+	case errors.Is(err, llm.ErrRateLimited):
 		return "模型请求太频繁，请过一分钟再试"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "生成超时，请再试一次"
@@ -238,12 +238,12 @@ func (s *server) removeImages(id string) {
 }
 
 // record stores one billed call; failures are only logged.
-func (s *server) record(userID, op string, u gemini.Usage) {
+func (s *server) record(userID, op string, u llm.Usage) {
 	if userID == "" || (u.InputTokens == 0 && u.OutputTokens == 0) {
 		return
 	}
 	now := time.Now()
-	cost, known := usage.Cost(u.Model, now, u.InputTokens, u.OutputTokens+u.ThoughtTokens)
+	cost, known := usage.Cost(u, now)
 	if !known {
 		log.Printf("usage: no price for model %q; recording tokens only", u.Model)
 	}

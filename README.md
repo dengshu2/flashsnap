@@ -4,7 +4,7 @@
 
 ## 怎么做出一张卡
 
-1. **写**：Gemini 按"基础约定 + 风格"的提示词，直接写出一个完整的 HTML 文档，边写边推给页面，页面在一个禁止脚本的 iframe 里实时预览。
+1. **写**：DeepSeek 按"基础约定 + 风格"的提示词，直接写出一个完整的 HTML 文档，边写边推给页面，页面在一个禁止脚本的 iframe 里实时预览。
 2. **清理**：服务端把 HTML 从回复里取出来，删掉脚本、事件属性、外部链接和外部资源，只留卡片本身。
 3. **渲染**：容器里的无头 Chrome 按 600px 宽、2 倍分辨率把卡片截成 PNG，同时生成列表用的缩略图。字体装在容器里，渲染不依赖网络。
 4. **检查**：量出卡片的高度、是否横向溢出、最小字号；超出规定就把问题告诉模型，让它改一次，再渲染一次。
@@ -33,7 +33,7 @@
 | 层级 | 技术 |
 |---|---|
 | 后端 | Go 1.26 + [chi](https://github.com/go-chi/chi)，SQLite（[modernc.org/sqlite](https://modernc.org/sqlite)） |
-| 模型 | Google Gemini `gemini-3.8-flash`，流式调用 |
+| 模型 | DeepSeek `deepseek-flash`，流式调用，不开思考 |
 | 渲染 | [chromedp](https://github.com/chromedp/chromedp) + `chromedp/headless-shell` |
 | 前端 | 原生 HTML / CSS / ES modules，界面用共用设计规范 Quiet UI（`web/assets/css/quiet.css`，复制进来的，不要直接改），`go:embed` 打进二进制 |
 | 部署 | Docker Compose，Caddy 反代 |
@@ -46,11 +46,12 @@ internal/
   config/               环境变量
   store/                SQLite：用户、卡片、用量
   auth/                 登录、JWT、鉴权中间件（没有注册页）
-  gemini/               Gemini 流式客户端
+  llm/                  模型接口（对话、用量）
+  deepseek/             DeepSeek 流式客户端
   prompt/               提示词：base.md + styles/*.md
   cardhtml/             从回复里取 HTML 并清理
   render/               无头 Chrome 渲染 PNG 和缩略图
-  usage/                Gemini 计价
+  usage/                计价（DeepSeek 分高峰时段和缓存命中）
   api/                  路由；generate.go 是"写、清理、渲染、检查、保存"的流程
 web/
   index.html            首页（输入卡片 + 卡片）、全部卡片、卡片详情、账户，用 hash 切换
@@ -61,7 +62,7 @@ web/
 ## 开发
 
 ```bash
-cp .env.example .env    # 填 JWT_SECRET 和 GEMINI_API_KEY
+cp .env.example .env    # 填 JWT_SECRET 和 DEEPSEEK_API_KEY
 CHROME_PATH=$(which google-chrome) go run .
 go run . user add you@example.com   # 按提示输入密码
 ```
@@ -79,7 +80,7 @@ docker compose up -d --build
 docker exec -i flashsnap /app/flashsnap user add you@example.com    # 首次：创建账号
 ```
 
-数据库和图片都在 `./data`（容器内 `/app/data`）。容器所在网络必须只有 IPv4，因为 Google 会拒绝这台服务器的 IPv6 地址段。
+数据库和图片都在 `./data`（容器内 `/app/data`）。
 
 已有 bcrypt 密码哈希时，可以用 `flashsnap user import <email> <hash>` 直接导入。
 
@@ -88,8 +89,9 @@ docker exec -i flashsnap /app/flashsnap user add you@example.com    # 首次：�
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `JWT_SECRET` | 是 | — | `openssl rand -hex 32` |
-| `GEMINI_API_KEY` | 是 | — | Google AI Studio 的 API Key |
-| `GEMINI_MODEL` | — | `gemini-3.8-flash` | |
+| `DEEPSEEK_API_KEY` | 是 | — | DeepSeek 开放平台的 API Key |
+| `DEEPSEEK_MODEL` | — | `deepseek-flash` | |
+| `DEEPSEEK_BASE_URL` | — | 官方地址 | |
 | `RENDER_CONCURRENCY` | — | `2` | 同时渲染的卡片数 |
 | `UMAMI_WEBSITE_ID` | — | 空 | 填了才注入统计脚本 |
 | `PORT` / `DATA_DIR` / `CHROME_PATH` | — | `8080` / `./data` / 镜像里已设好 | |
@@ -106,4 +108,4 @@ docker exec -i flashsnap /app/flashsnap user add you@example.com    # 首次：�
 | GET | `/api/cards?q=&limit=&offset=` | 卡片列表 |
 | GET / DELETE | `/api/cards/{id}` | 一张卡片（含 HTML）/ 删除 |
 | GET | `/img/{id}.png`、`/img/{id}.jpg` | 卡片图片和缩略图；`?download=1` 下载。ID 是 128 位随机值，不需要登录 |
-| GET | `/api/usage?days=30` | 调用次数、token 和费用 |
+| GET | `/api/usage?days=30` | 调用次数、token 和费用：合计、今天、按类型、按模型、按天 |

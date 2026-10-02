@@ -77,6 +77,9 @@
 
 .usage { display: grid; gap: 14px; }
 .usage-foot { margin: 0; font-size: 12.5px; color: var(--q-sub); line-height: 1.6; }
+.usage-wait { display: grid; place-items: center; min-height: 96px; }
+.usage-wait .q-typing { visibility: hidden; animation: show-late 0s 0.4s forwards; }
+@keyframes show-late { to { visibility: visible; } }
 
 /* ── Sign in ───────────────────────────────────────────────────────────── */
 

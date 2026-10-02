@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"flashsnap/internal/auth"
-	"flashsnap/internal/gemini"
+	"flashsnap/internal/llm"
 	"flashsnap/internal/prompt"
 	"flashsnap/internal/render"
 	"flashsnap/internal/store"
@@ -28,17 +28,17 @@ const wideCard = `<!doctype html><html><body><article class="card"><h1>TOO-WIDE<
 // good card otherwise (including when asked to fix the wide one).
 type fakeModel struct {
 	mu    sync.Mutex
-	calls [][]gemini.Turn
+	calls [][]llm.Turn
 	fail  error
 }
 
-func (m *fakeModel) Model() string { return "gemini-3.8-flash" }
+func (m *fakeModel) Model() string { return "deepseek-flash" }
 
-func (m *fakeModel) Stream(_ context.Context, system string, turns []gemini.Turn, _ int, onText func(string)) (string, gemini.Usage, error) {
+func (m *fakeModel) Stream(_ context.Context, system string, turns []llm.Turn, _ int, onText func(string)) (string, llm.Usage, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, turns)
 	m.mu.Unlock()
-	u := gemini.Usage{Model: "gemini-3.8-flash", InputTokens: 800, OutputTokens: 2000, ThoughtTokens: 500}
+	u := llm.Usage{Model: "deepseek-flash", InputTokens: 800, OutputTokens: 2000, ThoughtTokens: 500}
 	if m.fail != nil {
 		return "", u, m.fail
 	}
@@ -242,7 +242,7 @@ func TestBrokenCardIsFixedOnce(t *testing.T) {
 		t.Fatalf("model calls = %d", n)
 	}
 	repair := h.model.calls[1]
-	if len(repair) != 3 || repair[1].Role != "model" || !strings.Contains(repair[2].Text, "横向超出") {
+	if len(repair) != 3 || repair[1].Role != "assistant" || !strings.Contains(repair[2].Text, "横向超出") {
 		t.Errorf("repair turns = %+v", repair)
 	}
 	if card := evs[len(evs)-1].data["card"].(map[string]any); card["title"] != "番茄工作法" {
@@ -275,7 +275,7 @@ func TestCreateCardErrors(t *testing.T) {
 		t.Errorf("without a token: %d", resp.StatusCode)
 	}
 
-	h.model.fail = gemini.ErrRateLimited
+	h.model.fail = llm.ErrRateLimited
 	_, body := h.do("POST", "/api/cards", h.token, map[string]string{"text": "hi"})
 	evs := parseSSE(t, body)
 	last := evs[len(evs)-1]

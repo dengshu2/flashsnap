@@ -16,8 +16,9 @@ type Config struct {
 	JWTSecret      string
 	UmamiWebsiteID string
 
-	GeminiAPIKey string
-	GeminiModel  string
+	DeepSeekAPIKey  string
+	DeepSeekModel   string
+	DeepSeekBaseURL string // empty: DeepSeek's public endpoint
 
 	ChromePath        string // empty: look the browser up on PATH
 	RenderConcurrency int
@@ -32,8 +33,9 @@ func Load() (Config, error) {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		UmamiWebsiteID: os.Getenv("UMAMI_WEBSITE_ID"),
 
-		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:  env("GEMINI_MODEL", "gemini-3.8-flash"),
+		DeepSeekAPIKey:  os.Getenv("DEEPSEEK_API_KEY"),
+		DeepSeekModel:   env("DEEPSEEK_MODEL", "deepseek-flash"),
+		DeepSeekBaseURL: os.Getenv("DEEPSEEK_BASE_URL"),
 
 		ChromePath:        os.Getenv("CHROME_PATH"),
 		RenderConcurrency: envInt("RENDER_CONCURRENCY", 2),
@@ -42,8 +44,8 @@ func Load() (Config, error) {
 	if c.JWTSecret == "" {
 		missing = append(missing, "JWT_SECRET")
 	}
-	if c.GeminiAPIKey == "" {
-		missing = append(missing, "GEMINI_API_KEY")
+	if c.DeepSeekAPIKey == "" {
+		missing = append(missing, "DEEPSEEK_API_KEY")
 	}
 	if len(missing) > 0 {
 		return Config{}, errors.New("missing required environment variables: " + strings.Join(missing, ", "))

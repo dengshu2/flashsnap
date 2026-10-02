@@ -25,7 +25,7 @@ import (
 	"flashsnap/internal/api"
 	"flashsnap/internal/auth"
 	"flashsnap/internal/config"
-	"flashsnap/internal/gemini"
+	"flashsnap/internal/deepseek"
 	"flashsnap/internal/prompt"
 	"flashsnap/internal/render"
 	"flashsnap/internal/store"
@@ -73,7 +73,7 @@ func main() {
 	handler := api.Handler(api.Deps{
 		Store:    st,
 		Auth:     auth.NewService(st, cfg.JWTSecret),
-		Model:    gemini.New(cfg.GeminiAPIKey, cfg.GeminiModel, ""),
+		Model:    deepseek.New(cfg.DeepSeekAPIKey, cfg.DeepSeekModel, cfg.DeepSeekBaseURL),
 		Renderer: renderer,
 		Prompts:  prompts,
 		ImageDir: filepath.Join(cfg.DataDir, "cards"),
@@ -89,7 +89,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
-		log.Printf("flashsnap listening on :%s (model=%s)", cfg.Port, cfg.GeminiModel)
+		log.Printf("flashsnap listening on :%s (model=%s)", cfg.Port, cfg.DeepSeekModel)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server: %v", err)
 		}

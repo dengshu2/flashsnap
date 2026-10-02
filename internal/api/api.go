@@ -13,7 +13,7 @@ import (
 	"github.com/go-chi/httprate"
 
 	"flashsnap/internal/auth"
-	"flashsnap/internal/gemini"
+	"flashsnap/internal/llm"
 	"flashsnap/internal/prompt"
 	"flashsnap/internal/render"
 	"flashsnap/internal/store"
@@ -23,10 +23,7 @@ import (
 const maxBody = 64 << 10
 
 // Model writes card HTML.
-type Model interface {
-	Stream(ctx context.Context, system string, turns []gemini.Turn, maxTokens int, onText func(string)) (string, gemini.Usage, error)
-	Model() string
-}
+type Model = llm.Model
 
 // Renderer turns card HTML into images.
 type Renderer interface {

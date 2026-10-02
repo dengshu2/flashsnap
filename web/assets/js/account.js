@@ -4,6 +4,7 @@ import { api, session } from './api.js';
 import { h, setThemePref, themePref } from './ui.js';
 
 const OPS = [['generate', '生成'], ['repair', '自动修正']];
+const EMPTY = { calls: 0, input_tokens: 0, output_tokens: 0, thought_tokens: 0, cost_usd: 0 };
 
 const money = (usd) => {
     if (!usd) return '$0';
@@ -60,9 +61,9 @@ export class Account {
         for (const btn of this.el.range.querySelectorAll('[data-days]')) {
             btn.setAttribute('aria-pressed', String(Number(btn.dataset.days) === this.days));
         }
-        const skel = h('div', { class: 'q-skeleton', 'aria-hidden': 'true' });
-        skel.style.height = '96px';
-        this.el.usage.replaceChildren(skel);
+        // Keep the space and show dots only if the wait lasts.
+        this.el.usage.replaceChildren(h('div', { class: 'usage-wait', 'aria-hidden': 'true' },
+            h('span', { class: 'q-typing' }, h('i'), h('i'), h('i'))));
         try {
             this.el.usage.replaceChildren(...content(await api(`/api/usage?days=${this.days}`)));
         } catch (err) {
@@ -84,12 +85,13 @@ function content(r) {
             h('table', { class: 'q-table' },
                 h('thead', {}, h('tr', {}, h('th', { text: '类型' }), h('th', { text: '调用' }), h('th', { text: 'Token' }), h('th', { text: '费用' }))),
                 h('tbody', {}, OPS.map(([op, label]) => {
-                    const s = r.by_op[op] || { calls: 0, input_tokens: 0, output_tokens: 0, thought_tokens: 0, cost_usd: 0 };
+                    const s = r.by_op[op] || EMPTY;
                     return h('tr', {}, h('td', { text: label }), h('td', { text: num(s.calls) }), h('td', { text: tokens(s) }), h('td', { text: money(s.cost_usd) }));
                 })))),
         h('p', { class: 'usage-foot', text:
-            '按 Google 官方单价估算：Gemini 3.8 Flash 每百万 token 输入 $0.75、输出 $3.75（思考也按输出计），2027 年 1 月 1 日起翻倍。' +
-            '"自动修正"是卡片渲染后超出版面时，让模型改一次的调用。精确账单以 Google AI Studio 为准。' }),
+            '按 DeepSeek 官方单价估算：deepseek-flash 每百万 token 输入 $0.15（命中缓存 $0.003）、输出 $0.60；' +
+            '工作日北京时间 9–12 点和 14–18 点是高峰，价格翻倍。' +
+            '"自动修正"是卡片渲染后超出版面时，让模型改一次的调用。精确账单以 DeepSeek 开放平台为准。' }),
     ];
 }
 

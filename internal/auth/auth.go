@@ -20,8 +20,15 @@ import (
 
 const (
 	bcryptCost    = 12
-	tokenLifetime = 7 * 24 * time.Hour
+	tokenLifetime = 30 * 24 * time.Hour
+	// A token with less than this left is replaced on its next use, so a
+	// session in regular use never runs out.
+	renewWithin = tokenLifetime / 2
 )
+
+// RenewHeader carries a replacement token on responses to requests whose
+// token is past renewWithin; the client stores it in place of the old one.
+const RenewHeader = "X-Renewed-Token"
 
 // User-facing validation errors; their messages are shown verbatim.
 var (
@@ -144,6 +151,11 @@ func (s *Service) Middleware(onFail func(http.ResponseWriter)) func(http.Handler
 			if err != nil {
 				onFail(w)
 				return
+			}
+			if claims.ExpiresAt != nil && time.Until(claims.ExpiresAt.Time) < renewWithin {
+				if fresh, err := s.sign(store.User{ID: claims.UserID, Email: claims.Email}); err == nil {
+					w.Header().Set(RenewHeader, fresh)
+				}
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, claims)))
 		})

@@ -36,6 +36,13 @@ export function logout() {
     window.location.replace('/login');
 }
 
+/** Keeps the session going: the server sends a replacement token once the
+ *  current one is past its half-life. */
+function keepRenewed(res) {
+    const fresh = res.headers.get('X-Renewed-Token');
+    if (fresh) session.save(fresh);
+}
+
 export class ApiError extends Error {
     constructor(message, status) {
         super(message);
@@ -70,6 +77,7 @@ export async function api(path, { method = 'GET', body, raw = false, keepalive =
         logout();
         throw new ApiError('登录已过期，请重新登录', 401);
     }
+    keepRenewed(res);
     if (!res.ok) {
         let message = `请求失败（${res.status}）`;
         try { message = (await res.json()).error || message; } catch { /* non-JSON body */ }
@@ -100,6 +108,7 @@ export async function streamCard(body, onEvent) {
         logout();
         throw new ApiError('登录已过期，请重新登录', 401);
     }
+    keepRenewed(res);
     if (!res.ok) {
         let message = `请求失败（${res.status}）`;
         try { message = (await res.json()).error || message; } catch { /* non-JSON body */ }

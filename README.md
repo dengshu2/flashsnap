@@ -1,111 +1,36 @@
-# FlashSnap
+# FlashSnap ⚡
 
-把一段文字做成一张信息卡：粘贴新闻、概念、清单、数据或名言，选一种风格，几秒后得到一张适合在手机上看、可以直接转发的图片。自用工具，需要登录。
+纯前端 AI 信息卡生成工具，无需登录，自带 API Key 即开即用。支持 **OpenAI 兼容接口（DeepSeek / OpenAI / OpenRouter / 中转站）** 与 **Google Gemini 原生接口**，输入文字秒生成杂志风格信息卡，一键复制或下载高清 PNG。
 
-## 怎么做出一张卡
+## ✨ 功能
 
-1. **写**：DeepSeek 按"基础约定 + 风格"的提示词，直接写出一个完整的 HTML 文档，边写边推给页面，页面在一个禁止脚本的 iframe 里实时预览。
-2. **清理**：服务端把 HTML 从回复里取出来，删掉脚本、事件属性、外部链接和外部资源，只留卡片本身。
-3. **渲染**：容器里的无头 Chrome 按 600px 宽、2 倍分辨率把卡片截成 PNG，同时生成列表用的缩略图。字体装在容器里，渲染不依赖网络。
-4. **检查**：量出卡片的高度、是否横向溢出、最小字号；超出规定就把问题告诉模型，让它改一次，再渲染一次。
-5. **保存**：HTML、原文和图片存下来；复制和下载用的都是这张 PNG，所以看到的和拿到的完全一样。
+- 🎨 **AI 信息卡生成** — 固化杂志社论风单 Prompt，自动将任意文字排版为 900px 信息卡
+- 🔌 **多协议自带 Key** — 支持 OpenAI 兼容协议与 Gemini 原生协议，Key 仅存于浏览器 `localStorage`
+- 📋 **一键复制 / 下载** — 浏览器端高清 PNG 导出，支持一键复制到剪贴板或下载本地
+- ⚡ **流式渲染** — 实时预览 AI 生成进度
+- 📜 **本地历史记录** — 卡片记录保存在浏览器本地，随时回看
 
-## 提示词和风格
-
-- `internal/prompt/prompts/base.md`：所有风格共用的约定，包括画布（600px 宽，正文 20–22px，最小 15px）、可用字体、不引外部资源、每句话都要在原文里有依据，以及按内容类型选版式。
-- `internal/prompt/prompts/styles/*.md`：一个文件一种风格，开头写名称、简介和排序：
-
-  ```
-  ---
-  name: 杂志
-  summary: 暖白纸张、衬线大标题、粗强调线
-  order: 1
-  ---
-  ## 风格：杂志
-  ……
-  ```
-
-  加一种风格就是加一个文件，重新构建后自动出现在页面上。"自动"会把所有风格交给模型，让它按内容挑一种。
-- 可用字体：Noto Sans SC、Noto Serif SC、Inter、Oswald、Playfair Display、JetBrains Mono。要加字体，需要同时改 `base.md`、`Dockerfile`（安装）和 `web/frame.html`（预览用的 Google Fonts）。
-
-## 技术栈
-
-| 层级 | 技术 |
-|---|---|
-| 后端 | Go 1.26 + [chi](https://github.com/go-chi/chi)，SQLite（[modernc.org/sqlite](https://modernc.org/sqlite)） |
-| 模型 | DeepSeek `deepseek-flash`，流式调用，不开思考 |
-| 渲染 | [chromedp](https://github.com/chromedp/chromedp) + `chromedp/headless-shell` |
-| 前端 | 原生 HTML / CSS / ES modules，界面用共用设计规范 Quiet UI（`web/assets/css/quiet.css`，复制进来的，不要直接改），`go:embed` 打进二进制 |
-| 部署 | Docker Compose，Caddy 反代 |
-
-## 项目结构
-
-```
-main.go                 入口；也提供 health 和 user 子命令
-internal/
-  config/               环境变量
-  store/                SQLite：用户、卡片、用量
-  auth/                 登录、JWT、鉴权中间件（没有注册页）
-  llm/                  模型接口（对话、用量）
-  deepseek/             DeepSeek 流式客户端
-  prompt/               提示词：base.md + styles/*.md
-  cardhtml/             从回复里取 HTML 并清理
-  render/               无头 Chrome 渲染 PNG 和缩略图
-  usage/                计价（DeepSeek 分高峰时段和缓存命中）
-  api/                  路由；generate.go 是"写、清理、渲染、检查、保存"的流程
-web/
-  index.html            首页（输入卡片 + 卡片）、全部卡片、卡片详情、账户，用 hash 切换
-  frame.html            实时预览用的文档（单独的 CSP，只允许内联样式和 Google Fonts）
-  assets/js/            main（路由）/ home / preview / history / cardpage / cards / account / api / ui
-```
-
-## 开发
+## 🚀 开发与构建
 
 ```bash
-cp .env.example .env    # 填 JWT_SECRET 和 DEEPSEEK_API_KEY
-CHROME_PATH=$(which google-chrome) go run .
-go run . user add you@example.com   # 按提示输入密码
+npm install
+npm run dev
 ```
+
+> 联调技巧：访问 `/?mock=stream` 可在不配置 API Key 的情况下，用内置样例卡验证流式渲染与导出管线。
 
 ```bash
-gofmt -l . && go vet ./... && go test ./...
+npm run build
 ```
 
-渲染测试需要 Chrome，没设 `CHROME_PATH` 时会跳过。可以在镜像里跑：先 `go test -c -o render.test ./internal/render`，再用 `docker run --rm -v "$PWD/render.test:/t" --entrypoint /t <镜像>` 执行。
+构建产物位于 `dist/`，为纯静态站点，由 Caddy `spa_site` 直接托管。
 
-## 部署
+## ⚙️ 配置
 
-```bash
-docker compose up -d --build
-docker exec -i flashsnap /app/flashsnap user add you@example.com    # 首次：创建账号
-```
+1. 打开应用，点击右上角 ⚙️ 设置图标
+2. 选择接口类型：**OpenAI 兼容**（可一键填充 DeepSeek / OpenAI / OpenRouter）或 **Google Gemini**
+3. 填写 API Base URL（可选）、API Key，并选择或手动输入模型名称
 
-数据库和图片都在 `./data`（容器内 `/app/data`）。
+## 📄 License
 
-已有 bcrypt 密码哈希时，可以用 `flashsnap user import <email> <hash>` 直接导入。
-
-## 环境变量
-
-| 变量 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| `JWT_SECRET` | 是 | — | `openssl rand -hex 32` |
-| `DEEPSEEK_API_KEY` | 是 | — | DeepSeek 开放平台的 API Key |
-| `DEEPSEEK_MODEL` | — | `deepseek-flash` | |
-| `DEEPSEEK_BASE_URL` | — | 官方地址 | |
-| `RENDER_CONCURRENCY` | — | `2` | 同时渲染的卡片数 |
-| `UMAMI_WEBSITE_ID` | — | 空 | 填了才注入统计脚本 |
-| `PORT` / `DATA_DIR` / `CHROME_PATH` | — | `8080` / `./data` / 镜像里已设好 | |
-
-## API
-
-除 `/health`、`/img/*` 和登录外，都需要 `Authorization: Bearer <token>`。
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/auth/login` | `{email, password}` → `{token, user}` |
-| GET | `/api/styles` | 风格列表，"自动"在最前 |
-| POST | `/api/cards` | `{text, style}` → 事件流：`stage`（writing / rendering / fixing）、`delta`（HTML 片段）、`done`（卡片）、`error` |
-| GET | `/api/cards?q=&limit=&offset=` | 卡片列表 |
-| GET / DELETE | `/api/cards/{id}` | 一张卡片（含 HTML）/ 删除 |
-| GET | `/img/{id}.png`、`/img/{id}.jpg` | 卡片图片和缩略图；`?download=1` 下载。ID 是 128 位随机值，不需要登录 |
-| GET | `/api/usage?days=30` | 调用次数、token 和费用：合计、今天、按类型、按模型、按天 |
+MIT
